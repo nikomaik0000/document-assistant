@@ -1,0 +1,721 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 20da7c8..3704f26 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,29 @@
+ # Changelog
+ 
++## Phase 1B - OpenCV 自動文件偵測與校正（2026-07-17）
++
++### 新增
++- `lib/scanner/`：獨立於 React 的文件掃描模組
++  - `opencvLoader.ts`：懶載入 `@techstark/opencv-js` 與 `jscanify/client`，singleton，只在需要時才下載／初始化
++  - `documentScanner.ts`：角點偵測、透視校正（拉正）、依角點自動裁切、幾何啟發式自動旋轉（校正後寬>高則轉為直式）
++  - `index.ts`：對外唯一入口 `processDocumentImage()`，React 端只 import 這支
++- `hooks/useDocumentProcessor.ts`：Queue 依序處理待校正圖片，避免平行處理造成 UI 卡頓
++- `hooks/useImageStore.tsx`：新增 `UPDATE_PROCESSING_RESULT` action，更新圖片校正狀態／結果
++- `components/ImageCard.tsx`：處理中 spinner、校正失敗時顯示提示訊息、原圖／校正後切換按鈕
++- `types/jscanify.d.ts`：手動型別宣告（套件本身無官方型別）
++
++### 架構決策
++- **jscanify 改用 `jscanify/client` 子路徑，而非直接 `import jscanify`**：套件預設進入點是給 Node.js 用的，依賴 `canvas`／`jsdom`，直接匯入會讓 Next.js 瀏覽器端打包失敗（或被迫打包不必要的 Node 原生模組）。`jscanify/client` 是套件官方提供的純 UMD 瀏覽器版本，無任何相依套件，行為與原本要求的「直接使用 jscanify」一致，只是改用它官方支援的瀏覽器進入點
++- **未採用 Web Worker**：查證後發現 jscanify 內部直接使用 `document.createElement('canvas')`，強依賴 DOM，無法在 Worker 中執行。目前改在主執行緒依序（Queue）處理，並將模組介面設計為未來可平移到 Worker 版本而不影響 React 呼叫端
++- **自動旋轉為幾何啟發式**：校正後寬度大於高度即轉為直式，非文字方向辨識（需 OCR），為目前範圍內合理的近似解法
++- `originalUrl` 與 `correctedUrl` 分別保留，不互相覆蓋，供之後 PDF／OCR／浮水印使用
++- Next.js 由 15.1.x 升級至 15.5.20：15.1.x 已無新的安全性修補版本（原本的 15.1.11 之後又發現多個 CVE，修補只延伸到 15.5.x／16.x 系列）
++
++### 已知限制
++- HEIC 檔案目前多數瀏覽器的 `<img>` 無法直接解碼，會被視為校正失敗、fallback 為原圖（訊息會顯示「無法讀取圖片」而非「找不到文件」），待 Phase 1B 後續加入 `heic2any` 轉檔可修正
++- OpenCV.js 本體約 26MB（wasm），採動態載入不影響首頁效能，但使用者上傳第一張圖片時需要等待下載＋初始化（僅發生一次）
++- `npm audit` 目前有一項來自 Next.js 內部依賴 postcss 的中度風險（建置期 XSS，不影響執行期），暫無 15.5.x 內的修補版本，因非執行期風險先不處理，後續有新版本再一併升級
++
+ ## Phase 1A - 專案骨架 + 上傳 + 圖片列表（2026-07-17）
+ 
+ ### 新增
+diff --git a/components/DocumentAssistantApp.tsx b/components/DocumentAssistantApp.tsx
+index b71ff3b..934e98c 100644
+--- a/components/DocumentAssistantApp.tsx
++++ b/components/DocumentAssistantApp.tsx
+@@ -1,12 +1,14 @@
+ "use client";
+ 
+ import { useImageStore } from "@/hooks/useImageStore";
++import { useDocumentProcessor } from "@/hooks/useDocumentProcessor";
+ import UploadArea from "./UploadArea";
+ import PreviewGrid from "./PreviewGrid";
+ import PrivacyNotice from "./PrivacyNotice";
+ 
+ export default function DocumentAssistantApp() {
+   const { images } = useImageStore();
++  useDocumentProcessor();
+   const hasImages = images.length > 0;
+ 
+   return (
+diff --git a/components/ImageCard.tsx b/components/ImageCard.tsx
+index 4a3632d..8203c0f 100644
+--- a/components/ImageCard.tsx
++++ b/components/ImageCard.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+ 
++import { useState } from "react";
+ import { useSortable } from "@dnd-kit/sortable";
+ import { CSS } from "@dnd-kit/utilities";
+ import clsx from "clsx";
+@@ -14,6 +15,7 @@ interface ImageCardProps {
+ 
+ export default function ImageCard({ image, index }: ImageCardProps) {
+   const { removeImage } = useImageStore();
++  const [showOriginal, setShowOriginal] = useState(false);
+   const {
+     attributes,
+     listeners,
+@@ -28,6 +30,9 @@ export default function ImageCard({ image, index }: ImageCardProps) {
+     transition,
+   };
+ 
++  const hasCorrected = image.status === "corrected" && !!image.correctedUrl;
++  const displayUrl = hasCorrected && !showOriginal ? image.correctedUrl! : image.originalUrl;
++
+   return (
+     <div
+       ref={setNodeRef}
+@@ -51,13 +56,33 @@ export default function ImageCard({ image, index }: ImageCardProps) {
+         {index + 1}
+       </span>
+ 
+-      <div className="aspect-[3/4] w-full bg-card">
++      <div className="relative aspect-[3/4] w-full bg-card">
+         {/* eslint-disable-next-line @next/next/no-img-element -- object URL 縮圖，不適用 next/image 最佳化 */}
+         <img
+-          src={image.originalUrl}
++          src={displayUrl}
+           alt={image.fileName}
+           className="h-full w-full object-cover"
+         />
++
++        {image.status === "processing" && (
++          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/40 text-white backdrop-blur-[1px]">
++            <span
++              className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white"
++              aria-hidden
++            />
++            <span className="text-xs font-medium">校正中…</span>
++          </div>
++        )}
++
++        {hasCorrected && (
++          <button
++            type="button"
++            onClick={() => setShowOriginal((v) => !v)}
++            className="absolute bottom-2 right-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-ink-muted shadow-soft transition-colors hover:text-ink"
++          >
++            {showOriginal ? "原圖" : "校正後"}
++          </button>
++        )}
+       </div>
+ 
+       <div className="flex items-start justify-between gap-2 p-3">
+@@ -68,6 +93,9 @@ export default function ImageCard({ image, index }: ImageCardProps) {
+           <p className="text-xs text-ink-faint">
+             {image.width}×{image.height} · {formatFileSize(image.sizeBytes)}
+           </p>
++          {image.status === "failed" && image.statusMessage && (
++            <p className="mt-0.5 text-xs text-danger">{image.statusMessage}</p>
++          )}
+         </div>
+         <button
+           type="button"
+diff --git a/hooks/useDocumentProcessor.ts b/hooks/useDocumentProcessor.ts
+new file mode 100644
+index 0000000..ed35b29
+--- /dev/null
++++ b/hooks/useDocumentProcessor.ts
+@@ -0,0 +1,80 @@
++"use client";
++
++import { useEffect, useRef } from "react";
++import { useImageStore } from "./useImageStore";
++import { processDocumentImage } from "@/lib/scanner";
++
++/**
++ * 監看圖片清單，對狀態為 "ready" 的圖片依序（Queue）呼叫 lib/scanner 進行自動校正。
++ *
++ * 刻意不平行處理多張圖片：
++ * - OpenCV.js 運算本身吃重 CPU，平行跑多張大圖容易讓分頁明顯卡頓
++ * - 依序處理在一次上傳大量圖片時，UI 反應會更穩定，也方便未來顯示處理進度
++ *
++ * 這個 hook 只負責「橋接」：把 store 的狀態變化與 lib/scanner 的純函式串起來，
++ * 實際的偵測／校正邏輯完全在 lib/scanner，元件與這個 hook 都不需要知道 OpenCV 的存在。
++ */
++export function useDocumentProcessor() {
++  const { images, updateProcessingResult } = useImageStore();
++
++  const queueRef = useRef<string[]>([]);
++  const queuedIdsRef = useRef<Set<string>>(new Set());
++  const processingRef = useRef(false);
++  // 讓 processQueue 內部能拿到最新的 images，避免把 images 放進 effect 依賴造成重複觸發
++  const imagesRef = useRef(images);
++  imagesRef.current = images;
++
++  useEffect(() => {
++    for (const image of images) {
++      if (image.status === "ready" && !queuedIdsRef.current.has(image.id)) {
++        queuedIdsRef.current.add(image.id);
++        queueRef.current.push(image.id);
++      }
++    }
++
++    void processQueue();
++
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [images]);
++
++  async function processQueue() {
++    if (processingRef.current) return;
++    processingRef.current = true;
++
++    try {
++      while (queueRef.current.length > 0) {
++        const id = queueRef.current.shift();
++        if (!id) continue;
++
++        const image = imagesRef.current.find((img) => img.id === id);
++        if (!image) {
++          // 使用者可能在排隊期間刪除了這張圖片
++          queuedIdsRef.current.delete(id);
++          continue;
++        }
++
++        updateProcessingResult({ id, status: "processing" });
++
++        const outcome = await processDocumentImage(image.originalUrl);
++
++        if (outcome.status === "corrected") {
++          updateProcessingResult({
++            id,
++            status: "corrected",
++            correctedUrl: outcome.correctedUrl,
++          });
++        } else {
++          updateProcessingResult({
++            id,
++            status: "failed",
++            statusMessage: outcome.message,
++          });
++        }
++
++        queuedIdsRef.current.delete(id);
++      }
++    } finally {
++      processingRef.current = false;
++    }
++  }
++}
+diff --git a/hooks/useImageStore.tsx b/hooks/useImageStore.tsx
+index f54f54e..98684d8 100644
+--- a/hooks/useImageStore.tsx
++++ b/hooks/useImageStore.tsx
+@@ -8,18 +8,26 @@ import {
+   useReducer,
+   type ReactNode,
+ } from "react";
+-import { DocumentImage } from "@/types/image";
++import { DocumentImage, ImageStatus } from "@/types/image";
+ import { revokeDocumentImageUrls } from "@/lib/image";
+ 
+ interface ImageStoreState {
+   images: DocumentImage[];
+ }
+ 
++interface UpdateProcessingResultPayload {
++  id: string;
++  status: ImageStatus;
++  correctedUrl?: string;
++  statusMessage?: string;
++}
++
+ type ImageStoreAction =
+   | { type: "ADD_IMAGES"; images: DocumentImage[] }
+   | { type: "REMOVE_IMAGE"; id: string }
+   | { type: "REORDER"; orderedIds: string[] }
+-  | { type: "CLEAR" };
++  | { type: "CLEAR" }
++  | { type: "UPDATE_PROCESSING_RESULT"; payload: UpdateProcessingResultPayload };
+ 
+ function imageStoreReducer(
+   state: ImageStoreState,
+@@ -48,6 +56,27 @@ function imageStoreReducer(
+       return { images: [] };
+     }
+ 
++    case "UPDATE_PROCESSING_RESULT": {
++      const { id, status, correctedUrl, statusMessage } = action.payload;
++      return {
++        images: state.images.map((img) => {
++          if (img.id !== id) return img;
++
++          // 若這張圖片先前已經有校正結果、這次又產生新的，釋放舊的 URL 避免記憶體洩漏
++          if (img.correctedUrl && img.correctedUrl !== correctedUrl) {
++            URL.revokeObjectURL(img.correctedUrl);
++          }
++
++          return {
++            ...img,
++            status,
++            correctedUrl: correctedUrl ?? img.correctedUrl,
++            statusMessage,
++          };
++        }),
++      };
++    }
++
+     default:
+       return state;
+   }
+@@ -59,6 +88,7 @@ interface ImageStoreContextValue {
+   removeImage: (id: string) => void;
+   reorderImages: (orderedIds: string[]) => void;
+   clearImages: () => void;
++  updateProcessingResult: (payload: UpdateProcessingResultPayload) => void;
+ }
+ 
+ const ImageStoreContext = createContext<ImageStoreContextValue | null>(null);
+@@ -82,6 +112,13 @@ export function ImageStoreProvider({ children }: { children: ReactNode }) {
+     dispatch({ type: "CLEAR" });
+   }, []);
+ 
++  const updateProcessingResult = useCallback(
++    (payload: UpdateProcessingResultPayload) => {
++      dispatch({ type: "UPDATE_PROCESSING_RESULT", payload });
++    },
++    []
++  );
++
+   const value = useMemo(
+     () => ({
+       images: state.images,
+@@ -89,8 +126,16 @@ export function ImageStoreProvider({ children }: { children: ReactNode }) {
+       removeImage,
+       reorderImages,
+       clearImages,
++      updateProcessingResult,
+     }),
+-    [state.images, addImages, removeImage, reorderImages, clearImages]
++    [
++      state.images,
++      addImages,
++      removeImage,
++      reorderImages,
++      clearImages,
++      updateProcessingResult,
++    ]
+   );
+ 
+   return (
+diff --git a/lib/scanner/documentScanner.ts b/lib/scanner/documentScanner.ts
+new file mode 100644
+index 0000000..d00ba2a
+--- /dev/null
++++ b/lib/scanner/documentScanner.ts
+@@ -0,0 +1,136 @@
++import { getScanner } from "./opencvLoader";
++import type { Corners, ScanResult } from "./types";
++
++/**
++ * 用兩點距離計算邊長，取上下（或左右）兩邊中較長者，
++ * 讓校正後的輸出盡量保留原始解析度，不會因為透視角度而被縮小。
++ */
++function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
++  return Math.hypot(a.x - b.x, a.y - b.y);
++}
++
++function computeOutputSize(corners: Corners): { width: number; height: number } {
++  const { topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner } = corners;
++
++  const topWidth = distance(topLeftCorner, topRightCorner);
++  const bottomWidth = distance(bottomLeftCorner, bottomRightCorner);
++  const leftHeight = distance(topLeftCorner, bottomLeftCorner);
++  const rightHeight = distance(topRightCorner, bottomRightCorner);
++
++  return {
++    width: Math.round(Math.max(topWidth, bottomWidth)),
++    height: Math.round(Math.max(leftHeight, rightHeight)),
++  };
++}
++
++function loadImageElement(url: string): Promise<HTMLImageElement> {
++  return new Promise((resolve, reject) => {
++    const img = new Image();
++    img.onload = () => resolve(img);
++    img.onerror = () => reject(new Error("圖片解碼失敗（可能是不支援的格式）"));
++    img.src = url;
++  });
++}
++
++/**
++ * 幾何啟發式自動旋轉：校正後若結果為橫向（寬 > 高），
++ * 視為掃描方向錯誤，旋轉 90 度轉為直式。
++ *
++ * 這不是真正的文字方向辨識（需要 OCR 才能做到），是目前不引入 OCR 前提下
++ * 合理的近似解法，多數證件／文件掃描皆為直式。
++ */
++function autoRotateToPortrait(canvas: HTMLCanvasElement): HTMLCanvasElement {
++  if (canvas.width <= canvas.height) return canvas;
++
++  const rotated = document.createElement("canvas");
++  rotated.width = canvas.height;
++  rotated.height = canvas.width;
++
++  const ctx = rotated.getContext("2d");
++  if (!ctx) return canvas;
++
++  ctx.translate(rotated.width / 2, rotated.height / 2);
++  ctx.rotate(Math.PI / 2);
++  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
++
++  return rotated;
++}
++
++/**
++ * 對指定圖片網址（通常是 DocumentImage.originalUrl）執行：
++ * 文件邊界偵測 → 透視校正（拉正）→ 自動裁切 → 自動旋轉。
++ *
++ * 不會拋出例外：任何失敗情況都會回傳 ScanResult 讓呼叫端決定如何 fallback。
++ */
++export async function correctDocument(imageUrl: string): Promise<ScanResult> {
++  let img: HTMLImageElement;
++  try {
++    img = await loadImageElement(imageUrl);
++  } catch {
++    return {
++      kind: "error",
++      message: "無法讀取圖片以進行自動校正，將使用原圖。",
++    };
++  }
++
++  try {
++    const scanner = await getScanner();
++    const cv = window.cv;
++    if (!cv) throw new Error("OpenCV 尚未初始化");
++
++    const mat = cv.imread(img);
++    let contour;
++    try {
++      contour = scanner.findPaperContour(mat);
++
++      if (!contour) {
++        return {
++          kind: "not-detected",
++          message: "無法自動辨識文件，將使用原圖。",
++        };
++      }
++
++      const corners = scanner.getCornerPoints(contour);
++      const { topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner } = corners;
++      if (!topLeftCorner || !topRightCorner || !bottomLeftCorner || !bottomRightCorner) {
++        return {
++          kind: "not-detected",
++          message: "無法自動辨識文件的四個角，將使用原圖。",
++        };
++      }
++
++      const { width, height } = computeOutputSize(corners);
++      if (width < 10 || height < 10) {
++        return {
++          kind: "not-detected",
++          message: "偵測到的文件範圍過小，將使用原圖。",
++        };
++      }
++
++      const extracted = scanner.extractPaper(img, width, height, corners);
++      if (!extracted) {
++        return {
++          kind: "not-detected",
++          message: "無法自動辨識文件，將使用原圖。",
++        };
++      }
++
++      const rotated = autoRotateToPortrait(extracted);
++
++      return {
++        kind: "corrected",
++        canvas: rotated,
++        corners,
++      };
++    } finally {
++      mat.delete();
++      contour?.delete();
++    }
++  } catch (error) {
++    console.error("[documentScanner] 校正失敗", error);
++    return {
++      kind: "error",
++      message: "自動校正時發生錯誤，將使用原圖。",
++    };
++  }
++}
+diff --git a/lib/scanner/index.ts b/lib/scanner/index.ts
+new file mode 100644
+index 0000000..1c8acf1
+--- /dev/null
++++ b/lib/scanner/index.ts
+@@ -0,0 +1,59 @@
++/**
++ * lib/scanner 對外的唯一入口。
++ * React 端（hooks/components）只應該 import 這支檔案，
++ * 不要直接碰 documentScanner.ts / opencvLoader.ts 內部的 cv.Mat、canvas 等細節。
++ *
++ * 這樣未來要抽換實作（例如換成 Web Worker 版本、加入 OCR 前處理、
++ * 或是在 Tauri 桌面版用原生 OpenCV 取代 OpenCV.js）時，
++ * 只需要改這一層背後的模組，呼叫端完全不用動。
++ */
++import { correctDocument } from "./documentScanner";
++
++export interface DocumentCorrectionOutcome {
++  status: "corrected" | "unchanged";
++  /** 校正成功時的結果圖片 object URL，呼叫端使用完畢須自行 revoke */
++  correctedUrl?: string;
++  /** 當 status 為 "unchanged" 時，說明原因（供 UI 顯示提示） */
++  message?: string;
++}
++
++function canvasToObjectUrl(canvas: HTMLCanvasElement): Promise<string> {
++  return new Promise((resolve, reject) => {
++    canvas.toBlob(
++      (blob) => {
++        if (!blob) {
++          reject(new Error("無法將校正結果輸出為圖片"));
++          return;
++        }
++        resolve(URL.createObjectURL(blob));
++      },
++      "image/jpeg",
++      0.92
++    );
++  });
++}
++
++/**
++ * 對單張圖片執行自動文件偵測與校正。
++ * 永遠不會 reject：任何失敗都會回傳 status "unchanged" + message，
++ * 呼叫端沿用原圖即可，符合「不要讓程式崩潰」的需求。
++ */
++export async function processDocumentImage(
++  imageUrl: string
++): Promise<DocumentCorrectionOutcome> {
++  const result = await correctDocument(imageUrl);
++
++  if (result.kind === "corrected") {
++    try {
++      const correctedUrl = await canvasToObjectUrl(result.canvas);
++      return { status: "corrected", correctedUrl };
++    } catch {
++      return {
++        status: "unchanged",
++        message: "校正後圖片輸出失敗，將使用原圖。",
++      };
++    }
++  }
++
++  return { status: "unchanged", message: result.message };
++}
+diff --git a/lib/scanner/opencvLoader.ts b/lib/scanner/opencvLoader.ts
+new file mode 100644
+index 0000000..a4c5c38
+--- /dev/null
++++ b/lib/scanner/opencvLoader.ts
+@@ -0,0 +1,73 @@
++/**
++ * OpenCV.js（@techstark/opencv-js）與 jscanify 的懶載入器。
++ *
++ * 設計重點：
++ * - 兩者體積都不小（OpenCV.js 的 wasm 尤其大），因此用動態 import，
++ *   只有在使用者真的上傳圖片、需要校正時才會下載／初始化，不影響首頁載入速度。
++ * - 用 module-level 變數做 singleton，避免使用者連續上傳多批圖片時重複初始化。
++ * - jscanify 讀取的是 "jscanify/client" 這個瀏覽器安全的進入點（純 UMD，無 Node 依賴），
++ *   而不是套件預設的 "jscanify"（那個進入點是給 Node.js 用的，依賴 canvas/jsdom，
++ *   直接匯入會讓 Next.js 打包失敗）。
++ * - jscanify 的程式碼內部直接參照全域變數 cv（例如 `new cv.Mat()`），
++ *   所以載入 OpenCV.js 之後，必須手動把它掛到 window.cv 上，jscanify 才抓得到。
++ */
++import type jscanifyCtor from "jscanify/client";
++
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++type CvNamespace = any;
++
++declare global {
++  interface Window {
++    cv?: CvNamespace;
++  }
++}
++
++let cvPromise: Promise<CvNamespace> | null = null;
++let scannerPromise: Promise<InstanceType<typeof jscanifyCtor>> | null = null;
++
++async function loadOpenCv(): Promise<CvNamespace> {
++  if (typeof window === "undefined") {
++    throw new Error("OpenCV.js 只能在瀏覽器環境載入");
++  }
++
++  if (!cvPromise) {
++    cvPromise = (async () => {
++      const cvModule = (await import("@techstark/opencv-js")).default as
++        | CvNamespace
++        | Promise<CvNamespace>;
++
++      let cv: CvNamespace;
++      if (cvModule instanceof Promise) {
++        cv = await cvModule;
++      } else if (cvModule.Mat) {
++        // 部分版本在模組載入當下就已經 ready
++        cv = cvModule;
++      } else {
++        cv = await new Promise<CvNamespace>((resolve) => {
++          cvModule.onRuntimeInitialized = () => resolve(cvModule);
++        });
++      }
++
++      window.cv = cv;
++      return cv;
++    })();
++  }
++
++  return cvPromise;
++}
++
++/**
++ * 取得已初始化的 jscanify scanner 實例。
++ * 對外唯一應該呼叫的函式；OpenCV 的載入細節完全封裝在這裡。
++ */
++export async function getScanner(): Promise<InstanceType<typeof jscanifyCtor>> {
++  if (!scannerPromise) {
++    scannerPromise = (async () => {
++      await loadOpenCv();
++      const JscanifyCtor = (await import("jscanify/client")).default;
++      return new JscanifyCtor();
++    })();
++  }
++
++  return scannerPromise;
++}
+diff --git a/lib/scanner/types.ts b/lib/scanner/types.ts
+new file mode 100644
+index 0000000..20f2c7c
+--- /dev/null
++++ b/lib/scanner/types.ts
+@@ -0,0 +1,26 @@
++/**
++ * lib/scanner 模組對外的型別定義。
++ * 這一層刻意與 types/image.ts（React 端使用的 DocumentImage）分開，
++ * 讓掃描模組保持獨立，未來可抽出成獨立套件或搬進 Worker 都不需要動到 React 型別。
++ */
++
++export interface Corners {
++  topLeftCorner: { x: number; y: number };
++  topRightCorner: { x: number; y: number };
++  bottomLeftCorner: { x: number; y: number };
++  bottomRightCorner: { x: number; y: number };
++}
++
++/**
++ * 校正結果為 discriminated union：
++ * - "corrected"：成功偵測並校正，附上結果畫布與角點
++ * - "not-detected"：圖片讀取成功，但找不到文件邊界（沿用原圖，不算錯誤）
++ * - "error"：處理過程發生例外（如圖片格式無法解碼），沿用原圖並記錄原因
++ *
++ * 後兩種情況都不會拋出例外，呼叫端只需依 kind 決定是否更新 correctedUrl，
++ * 對應原始需求「OpenCV 找不到文件時保留原圖、不要讓程式崩潰」。
++ */
++export type ScanResult =
++  | { kind: "corrected"; canvas: HTMLCanvasElement; corners: Corners }
++  | { kind: "not-detected"; message: string }
++  | { kind: "error"; message: string };
+diff --git a/next.config.ts b/next.config.ts
+index 497c16d..7208d46 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
+   images: {
+     unoptimized: true, // static export 不支援 next/image 的伺服器端最佳化
+   },
++  webpack: (config) => {
++    // @techstark/opencv-js 的瀏覽器版本會探測 Node.js 核心模組是否存在，
++    // 但實際上並不需要它們，這裡明確關閉 polyfill 以避免打包錯誤。
++    config.resolve.fallback = {
++      ...config.resolve.fallback,
++      fs: false,
++      path: false,
++      crypto: false,
++    };
++    return config;
++  },
+ };
+ 
+ export default nextConfig;
+diff --git a/package.json b/package.json
+index dd62b08..ba46ac1 100644
+--- a/package.json
++++ b/package.json
+@@ -10,10 +10,12 @@
+     "typecheck": "tsc --noEmit"
+   },
+   "dependencies": {
+-    "next": "15.1.11",
++    "next": "15.5.20",
+     "react": "^19.0.0",
+     "react-dom": "^19.0.0",
+     "react-dropzone": "^14.3.5",
++    "@techstark/opencv-js": "^5.0.0-release.1",
++    "jscanify": "^1.4.2",
+     "@dnd-kit/core": "^6.1.0",
+     "@dnd-kit/sortable": "^8.0.0",
+     "@dnd-kit/utilities": "^3.2.2",
+@@ -25,7 +27,7 @@
+     "@types/react": "^19.0.2",
+     "@types/react-dom": "^19.0.2",
+     "eslint": "^9.17.0",
+-    "eslint-config-next": "15.1.11",
++    "eslint-config-next": "15.5.20",
+     "@eslint/eslintrc": "^3.2.0",
+     "tailwindcss": "^3.4.17",
+     "postcss": "^8.5.1",
+diff --git a/types/jscanify.d.ts b/types/jscanify.d.ts
+new file mode 100644
+index 0000000..d214023
+--- /dev/null
++++ b/types/jscanify.d.ts
+@@ -0,0 +1,33 @@
++/**
++ * jscanify 沒有提供官方型別定義。
++ * 我們只使用 "jscanify/client" 這個瀏覽器安全的進入點（純 UMD，不依賴 Node 的 canvas/jsdom），
++ * 因此只針對這個子路徑宣告最小必要的型別。
++ */
++declare module "jscanify/client" {
++  interface JscanifyCorners {
++    topLeftCorner: { x: number; y: number };
++    topRightCorner: { x: number; y: number };
++    bottomLeftCorner: { x: number; y: number };
++    bottomRightCorner: { x: number; y: number };
++  }
++
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  type CvMat = any;
++  type JscanifyImage = HTMLImageElement | HTMLCanvasElement;
++
++  export default class jscanify {
++    constructor();
++    findPaperContour(img: CvMat): CvMat;
++    getCornerPoints(contour: CvMat): JscanifyCorners;
++    highlightPaper(
++      image: JscanifyImage,
++      options?: { color?: string; thickness?: number }
++    ): HTMLCanvasElement;
++    extractPaper(
++      image: JscanifyImage,
++      resultWidth: number,
++      resultHeight: number,
++      cornerPoints?: JscanifyCorners
++    ): HTMLCanvasElement | null;
++  }
++}
