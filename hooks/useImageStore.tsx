@@ -8,18 +8,26 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import { DocumentImage } from "@/types/image";
+import { DocumentImage, ImageStatus } from "@/types/image";
 import { revokeDocumentImageUrls } from "@/lib/image";
 
 interface ImageStoreState {
   images: DocumentImage[];
 }
 
+interface UpdateProcessingResultPayload {
+  id: string;
+  status: ImageStatus;
+  correctedUrl?: string;
+  statusMessage?: string;
+}
+
 type ImageStoreAction =
   | { type: "ADD_IMAGES"; images: DocumentImage[] }
   | { type: "REMOVE_IMAGE"; id: string }
   | { type: "REORDER"; orderedIds: string[] }
-  | { type: "CLEAR" };
+  | { type: "CLEAR" }
+  | { type: "UPDATE_PROCESSING_RESULT"; payload: UpdateProcessingResultPayload };
 
 function imageStoreReducer(
   state: ImageStoreState,
@@ -48,6 +56,27 @@ function imageStoreReducer(
       return { images: [] };
     }
 
+    case "UPDATE_PROCESSING_RESULT": {
+      const { id, status, correctedUrl, statusMessage } = action.payload;
+      return {
+        images: state.images.map((img) => {
+          if (img.id !== id) return img;
+
+          // 若這張圖片先前已經有校正結果、這次又產生新的，釋放舊的 URL 避免記憶體洩漏
+          if (img.correctedUrl && img.correctedUrl !== correctedUrl) {
+            URL.revokeObjectURL(img.correctedUrl);
+          }
+
+          return {
+            ...img,
+            status,
+            correctedUrl: correctedUrl ?? img.correctedUrl,
+            statusMessage,
+          };
+        }),
+      };
+    }
+
     default:
       return state;
   }
@@ -59,6 +88,7 @@ interface ImageStoreContextValue {
   removeImage: (id: string) => void;
   reorderImages: (orderedIds: string[]) => void;
   clearImages: () => void;
+  updateProcessingResult: (payload: UpdateProcessingResultPayload) => void;
 }
 
 const ImageStoreContext = createContext<ImageStoreContextValue | null>(null);
@@ -82,6 +112,13 @@ export function ImageStoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "CLEAR" });
   }, []);
 
+  const updateProcessingResult = useCallback(
+    (payload: UpdateProcessingResultPayload) => {
+      dispatch({ type: "UPDATE_PROCESSING_RESULT", payload });
+    },
+    []
+  );
+
   const value = useMemo(
     () => ({
       images: state.images,
@@ -89,8 +126,16 @@ export function ImageStoreProvider({ children }: { children: ReactNode }) {
       removeImage,
       reorderImages,
       clearImages,
+      updateProcessingResult,
     }),
-    [state.images, addImages, removeImage, reorderImages, clearImages]
+    [
+      state.images,
+      addImages,
+      removeImage,
+      reorderImages,
+      clearImages,
+      updateProcessingResult,
+    ]
   );
 
   return (

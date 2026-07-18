@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
@@ -14,6 +15,7 @@ interface ImageCardProps {
 
 export default function ImageCard({ image, index }: ImageCardProps) {
   const { removeImage } = useImageStore();
+  const [showOriginal, setShowOriginal] = useState(false);
   const {
     attributes,
     listeners,
@@ -27,6 +29,9 @@ export default function ImageCard({ image, index }: ImageCardProps) {
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  const hasCorrected = image.status === "corrected" && !!image.correctedUrl;
+  const displayUrl = hasCorrected && !showOriginal ? image.correctedUrl! : image.originalUrl;
 
   return (
     <div
@@ -51,13 +56,33 @@ export default function ImageCard({ image, index }: ImageCardProps) {
         {index + 1}
       </span>
 
-      <div className="aspect-[3/4] w-full bg-card">
+      <div className="relative aspect-[3/4] w-full bg-card">
         {/* eslint-disable-next-line @next/next/no-img-element -- object URL 縮圖，不適用 next/image 最佳化 */}
         <img
-          src={image.originalUrl}
+          src={displayUrl}
           alt={image.fileName}
           className="h-full w-full object-cover"
         />
+
+        {image.status === "processing" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/40 text-white backdrop-blur-[1px]">
+            <span
+              className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white"
+              aria-hidden
+            />
+            <span className="text-xs font-medium">校正中…</span>
+          </div>
+        )}
+
+        {hasCorrected && (
+          <button
+            type="button"
+            onClick={() => setShowOriginal((v) => !v)}
+            className="absolute bottom-2 right-2 rounded-full bg-white/90 px-2.5 py-1 text-xs font-medium text-ink-muted shadow-soft transition-colors hover:text-ink"
+          >
+            {showOriginal ? "原圖" : "校正後"}
+          </button>
+        )}
       </div>
 
       <div className="flex items-start justify-between gap-2 p-3">
@@ -68,6 +93,9 @@ export default function ImageCard({ image, index }: ImageCardProps) {
           <p className="text-xs text-ink-faint">
             {image.width}×{image.height} · {formatFileSize(image.sizeBytes)}
           </p>
+          {image.status === "failed" && image.statusMessage && (
+            <p className="mt-0.5 text-xs text-danger">{image.statusMessage}</p>
+          )}
         </div>
         <button
           type="button"

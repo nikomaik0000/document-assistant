@@ -1,12 +1,14 @@
 "use client";
 
 import { useImageStore } from "@/hooks/useImageStore";
+import { useDocumentProcessor } from "@/hooks/useDocumentProcessor";
 import UploadArea from "./UploadArea";
 import PreviewGrid from "./PreviewGrid";
 import PrivacyNotice from "./PrivacyNotice";
 
 export default function DocumentAssistantApp() {
   const { images } = useImageStore();
+  useDocumentProcessor();
   const hasImages = images.length > 0;
 
   return (
