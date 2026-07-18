@@ -27,9 +27,9 @@ lib/
   download.ts      瀏覽器下載觸發工具（JPG／PDF 共用）
   scanner/         文件掃描模組，獨立於 React，之後可重用於 OCR / 浮水印 / 桌面版
     index.ts        對外唯一入口
-    documentScanner.ts  角點偵測、透視校正、自動旋轉、偵測結果合理性檢查
-    opencvLoader.ts     OpenCV.js / jscanify 的載入邏輯
-    vendor/          vendored 的第三方原始碼（jscanify 瀏覽器版，見檔案內註解說明修改處）
+    documentScanner.ts  文件偵測與透視校正（純 OpenCV.js 自行實作：前處理、
+                          contour filtering、四邊形驗證、角點排序、重試策略）
+    opencvLoader.ts     OpenCV.js 的載入邏輯（script 標籤載入，不經過 webpack 打包）
   pdf/             A4 PDF 匯出模組，獨立於 React
     index.ts        對外唯一入口
     layout.ts        A4 排版計算（純函式）
