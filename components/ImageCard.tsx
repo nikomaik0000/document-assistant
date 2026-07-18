@@ -6,11 +6,17 @@ import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { DocumentImage } from "@/types/image";
 import { formatFileSize } from "@/lib/image";
+import { triggerUrlDownload } from "@/lib/download";
 import { useImageStore } from "@/hooks/useImageStore";
 
 interface ImageCardProps {
   image: DocumentImage;
   index: number;
+}
+
+function jpgFileName(originalFileName: string): string {
+  const base = originalFileName.replace(/\.[^.]+$/, "");
+  return `${base}_corrected.jpg`;
 }
 
 export default function ImageCard({ image, index }: ImageCardProps) {
@@ -31,6 +37,7 @@ export default function ImageCard({ image, index }: ImageCardProps) {
   };
 
   const hasCorrected = image.status === "corrected" && !!image.correctedUrl;
+  const hasFailed = image.status === "failed";
   const displayUrl = hasCorrected && !showOriginal ? image.correctedUrl! : image.originalUrl;
 
   return (
@@ -83,6 +90,13 @@ export default function ImageCard({ image, index }: ImageCardProps) {
             {showOriginal ? "原圖" : "校正後"}
           </button>
         )}
+
+        {hasFailed && (
+          <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-danger/90 px-2.5 py-2 text-xs font-medium text-white">
+            <span aria-hidden>⚠️</span>
+            <span>無法辨識文件，已使用原圖。</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-start justify-between gap-2 p-3">
@@ -93,9 +107,6 @@ export default function ImageCard({ image, index }: ImageCardProps) {
           <p className="text-xs text-ink-faint">
             {image.width}×{image.height} · {formatFileSize(image.sizeBytes)}
           </p>
-          {image.status === "failed" && image.statusMessage && (
-            <p className="mt-0.5 text-xs text-danger">{image.statusMessage}</p>
-          )}
         </div>
         <button
           type="button"
@@ -107,6 +118,20 @@ export default function ImageCard({ image, index }: ImageCardProps) {
           ✕
         </button>
       </div>
+
+      {hasCorrected && (
+        <div className="border-t border-border px-3 pb-3 pt-2">
+          <button
+            type="button"
+            onClick={() =>
+              triggerUrlDownload(image.correctedUrl!, jpgFileName(image.fileName))
+            }
+            className="w-full rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
+          >
+            下載 JPG
+          </button>
+        </div>
+      )}
     </div>
   );
 }

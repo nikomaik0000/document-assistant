@@ -5,6 +5,7 @@ import { useDocumentProcessor } from "@/hooks/useDocumentProcessor";
 import UploadArea from "./UploadArea";
 import PreviewGrid from "./PreviewGrid";
 import PrivacyNotice from "./PrivacyNotice";
+import PdfExportPanel from "./PdfExportPanel";
 
 export default function DocumentAssistantApp() {
   const { images } = useImageStore();
@@ -19,6 +20,12 @@ export default function DocumentAssistantApp() {
         ) : (
           <div className="space-y-6">
             <UploadArea compact />
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-ink-muted">
+                共 {images.length} 張圖片
+              </p>
+              <PdfExportPanel />
+            </div>
             <PreviewGrid />
           </div>
         )}

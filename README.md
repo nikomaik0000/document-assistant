@@ -24,11 +24,16 @@ components/     UI 元件
 hooks/          React hooks（狀態管理、與 lib/ 的橋接）
 lib/
   image.ts        一般圖片檔案工具函式
+  download.ts      瀏覽器下載觸發工具（JPG／PDF 共用）
   scanner/         文件掃描模組，獨立於 React，之後可重用於 OCR / 浮水印 / 桌面版
     index.ts        對外唯一入口
-    documentScanner.ts  角點偵測、透視校正、自動旋轉
+    documentScanner.ts  角點偵測、透視校正、自動旋轉、偵測結果合理性檢查
     opencvLoader.ts     OpenCV.js / jscanify 的載入邏輯
-    vendor/          vendored 的第三方原始碼（jscanify 瀏覽器版，見檔案內註解說明原因）
+    vendor/          vendored 的第三方原始碼（jscanify 瀏覽器版，見檔案內註解說明修改處）
+  pdf/             A4 PDF 匯出模組，獨立於 React
+    index.ts        對外唯一入口
+    layout.ts        A4 排版計算（純函式）
+    pdfExport.ts      用 pdf-lib 產生 PDF
 types/          共用型別定義
 scripts/        建置輔助腳本（postinstall 用）
 ```
@@ -44,4 +49,6 @@ scripts/        建置輔助腳本（postinstall 用）
 
 ## 目前進度
 
-詳見 `CHANGELOG.md`。目前已完成 Phase 1A（上傳／預覽／刪除／排序）與 Phase 1B（OpenCV 自動文件偵測與校正）。
+詳見 `CHANGELOG.md`。MVP 完整流程已完成：拖曳上傳 → 自動校正（含合理性檢查，
+偵測失敗會明確提示，不會誤標成功）→ 預覽（可切換原圖／校正後）→ 下載單張校正後 JPG →
+全部圖片輸出成一份 A4 PDF。之後才會進入下一階段（OCR、浮水印、與正本相符、身分證遮罩等）。
