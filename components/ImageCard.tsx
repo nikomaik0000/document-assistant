@@ -8,6 +8,7 @@ import { DocumentImage } from "@/types/image";
 import { formatFileSize } from "@/lib/image";
 import { triggerUrlDownload } from "@/lib/download";
 import { useImageStore } from "@/hooks/useImageStore";
+import CropEditorModal from "./CropEditorModal";
 
 interface ImageCardProps {
   image: DocumentImage;
@@ -22,6 +23,7 @@ function jpgFileName(originalFileName: string): string {
 export default function ImageCard({ image, index }: ImageCardProps) {
   const { removeImage } = useImageStore();
   const [showOriginal, setShowOriginal] = useState(false);
+  const [isCropEditorOpen, setIsCropEditorOpen] = useState(false);
   const {
     attributes,
     listeners,
@@ -38,6 +40,7 @@ export default function ImageCard({ image, index }: ImageCardProps) {
 
   const hasCorrected = image.status === "corrected" && !!image.correctedUrl;
   const hasFailed = image.status === "failed";
+  const canManualCrop = image.status === "corrected" || image.status === "failed";
   const displayUrl = hasCorrected && !showOriginal ? image.correctedUrl! : image.originalUrl;
 
   return (
@@ -119,18 +122,33 @@ export default function ImageCard({ image, index }: ImageCardProps) {
         </button>
       </div>
 
-      {hasCorrected && (
-        <div className="border-t border-border px-3 pb-3 pt-2">
-          <button
-            type="button"
-            onClick={() =>
-              triggerUrlDownload(image.correctedUrl!, jpgFileName(image.fileName))
-            }
-            className="w-full rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
-          >
-            下載 JPG
-          </button>
+      {(hasCorrected || canManualCrop) && (
+        <div className="flex gap-2 border-t border-border px-3 pb-3 pt-2">
+          {hasCorrected && (
+            <button
+              type="button"
+              onClick={() =>
+                triggerUrlDownload(image.correctedUrl!, jpgFileName(image.fileName))
+              }
+              className="flex-1 rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
+            >
+              下載 JPG
+            </button>
+          )}
+          {canManualCrop && (
+            <button
+              type="button"
+              onClick={() => setIsCropEditorOpen(true)}
+              className="flex-1 rounded-control border border-border px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              調整裁切範圍
+            </button>
+          )}
         </div>
+      )}
+
+      {isCropEditorOpen && (
+        <CropEditorModal image={image} onClose={() => setIsCropEditorOpen(false)} />
       )}
     </div>
   );

@@ -62,6 +62,7 @@ export function useDocumentProcessor() {
             id,
             status: "corrected",
             correctedUrl: outcome.correctedUrl,
+            corners: outcome.corners,
           });
         } else {
           updateProcessingResult({

@@ -8,7 +8,7 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import { DocumentImage, ImageStatus } from "@/types/image";
+import { DocumentImage, ImageCorners, ImageStatus } from "@/types/image";
 import { revokeDocumentImageUrls } from "@/lib/image";
 
 interface ImageStoreState {
@@ -19,6 +19,7 @@ interface UpdateProcessingResultPayload {
   id: string;
   status: ImageStatus;
   correctedUrl?: string;
+  corners?: ImageCorners;
   statusMessage?: string;
 }
 
@@ -57,7 +58,7 @@ function imageStoreReducer(
     }
 
     case "UPDATE_PROCESSING_RESULT": {
-      const { id, status, correctedUrl, statusMessage } = action.payload;
+      const { id, status, correctedUrl, corners, statusMessage } = action.payload;
       return {
         images: state.images.map((img) => {
           if (img.id !== id) return img;
@@ -71,6 +72,7 @@ function imageStoreReducer(
             ...img,
             status,
             correctedUrl: correctedUrl ?? img.correctedUrl,
+            corners: corners ?? img.corners,
             statusMessage,
           };
         }),
