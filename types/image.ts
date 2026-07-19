@@ -5,6 +5,19 @@
  */
 export type ImageStatus = "ready" | "processing" | "corrected" | "failed";
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** 四個角點座標，皆為原始圖片（原始解析度）的像素座標 */
+export interface ImageCorners {
+  topLeftCorner: Point;
+  topRightCorner: Point;
+  bottomLeftCorner: Point;
+  bottomRightCorner: Point;
+}
+
 export interface DocumentImage {
   id: string;
   file: File;
@@ -13,6 +26,11 @@ export interface DocumentImage {
   originalUrl: string;
   /** 校正後圖片的 object URL，Phase 1B 才會賦值 */
   correctedUrl?: string;
+  /**
+   * 校正時使用的四個角點（原始圖片像素座標）。自動偵測成功時由演算法填入，
+   * 使用者透過「調整裁切範圍」手動校正後也會更新到這裡，供下次開啟編輯畫面時使用。
+   */
+  corners?: ImageCorners;
   width: number;
   height: number;
   sizeBytes: number;

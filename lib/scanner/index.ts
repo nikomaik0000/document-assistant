@@ -8,11 +8,14 @@
  * 只需要改這一層背後的模組，呼叫端完全不用動。
  */
 import { correctDocument } from "./documentScanner";
+import type { Corners } from "./types";
 
 export interface DocumentCorrectionOutcome {
   status: "corrected" | "unchanged";
   /** 校正成功時的結果圖片 object URL，呼叫端使用完畢須自行 revoke */
   correctedUrl?: string;
+  /** 校正成功時使用的四個角點（原始圖片像素座標），供手動微調裁切範圍使用 */
+  corners?: Corners;
   /** 當 status 為 "unchanged" 時，說明原因（供 UI 顯示提示） */
   message?: string;
 }
@@ -46,7 +49,7 @@ export async function processDocumentImage(
   if (result.kind === "corrected") {
     try {
       const correctedUrl = await canvasToObjectUrl(result.canvas);
-      return { status: "corrected", correctedUrl };
+      return { status: "corrected", correctedUrl, corners: result.corners };
     } catch {
       return {
         status: "unchanged",
@@ -57,3 +60,7 @@ export async function processDocumentImage(
 
   return { status: "unchanged", message: result.message };
 }
+
+// Phase 2B：手動調整裁切範圍（獨立於自動偵測流程，不影響 documentScanner.ts）
+export { applyManualCrop } from "./manualCrop";
+export type { ManualCropOutcome } from "./manualCrop";

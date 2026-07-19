@@ -1,5 +1,59 @@
 # Changelog
 
+## Phase 2B - Manual Crop（手動調整四個角）（2026-07-18）
+
+新增功能，不影響現有功能：PDF 匯出、下載 JPG、npm 設定、OpenCV 自動偵測演算法
+（`documentScanner.ts`）皆未修改。
+
+### 操作方式
+1. 圖片自動校正完成後（不論成功或失敗），卡片下方會出現「調整裁切範圍」按鈕
+2. 點擊後開啟編輯畫面：左側顯示原圖與四個可拖曳角點（左上／右上／左下／右下），
+   右側即時顯示校正後預覽
+3. 用滑鼠（Desktop）或手指（手機）拖曳任一角點，右側預覽會即時更新，不需要重新
+   上傳圖片
+4. 按「重新校正」套用調整，會用使用者調整後的角點對原始解析度的圖片重新做一次
+   透視校正，取代原本的校正結果；按「取消」則捨棄本次調整
+5. 也可以按「重設為自動偵測結果」回到 OpenCV 自動偵測的角點
+
+套用後的結果會直接更新該圖片的狀態，下載 JPG／輸出 A4 PDF 都會使用調整後的版本。
+
+### 修改檔案
+只為了讓角點資料能傳到 UI 供編輯使用，並新增獨立的手動裁切模組：
+- `types/image.ts`：新增 `corners` 欄位（`ImageCorners`／`Point` 型別）
+- `hooks/useImageStore.tsx`：狀態更新時一併帶入 `corners`
+- `hooks/useDocumentProcessor.ts`：自動校正成功時把角點傳給 store
+- `lib/scanner/index.ts`：回傳值多帶 `corners`，並匯出新的 `applyManualCrop`
+  （`documentScanner.ts` 本身完全沒有修改）
+- `components/ImageCard.tsx`：新增「調整裁切範圍」按鈕
+
+新增檔案：
+- `lib/scanner/manualCrop.ts`：獨立模組，只做「給定四個角點重新做一次透視校正」，
+  跟自動偵測（找輪廓、評分、選最佳候選）完全無關，也不會呼叫或修改
+  `documentScanner.ts`
+- `components/CropEditorModal.tsx`：拖曳角點的編輯畫面
+
+### 技術細節
+- 角點拖曳用 Pointer Events（`onPointerDown`/`onPointerMove` + `setPointerCapture`），
+  同時支援滑鼠與觸控，不需要分別處理 mouse/touch 事件
+- 即時預覽：為了效能，準備了一份縮小版原圖（最長邊 480px）供拖曳時使用，拖曳結束
+  的畫面更新採用「trailing」節流（連續拖曳時，永遠只處理最新一次角點位置，避免
+  重疊運算），實測拖曳體感流暢；按下「重新校正」時才用原始解析度重新計算一次
+  最終結果
+- 角點座標統一以「原始圖片像素座標」為單一資料來源，畫面上的顯示座標／預覽縮圖
+  座標都是即時換算，避免多份座標系不同步
+
+### 驗證
+- ✅ `npm install` / `npm run dev` / `npm run build`：乾淨環境下皆成功
+- ✅ `tsc --noEmit` / `eslint`：無錯誤
+- 手動裁切的核心運算邏輯（給定角點重新透視校正）用 Node 直接測試，涵蓋：
+  - 真實照片 + 人工微調角點：成功，輸出尺寸正確
+  - 自動偵測失敗時的預設內縮矩形（未調整就直接套用）：成功
+  - 退化案例（四個角幾乎重疊）：正確回報錯誤、不會 crash，符合預期的防呆行為
+  - 使用者手動框選細長區域：成功，未因非典型長寬比而出錯
+- 拖曳互動、即時預覽節流、Pointer Events 在雙裝置（Desktop／Mobile）上的實際手感，
+  沙盒環境沒有真實瀏覽器可以操作測試，麻煩您實機測試這部分，如果拖曳手感或觸控
+  熱區大小需要調整，請告訴我
+
 ## Phase 2A - 文件偵測成功率優化（2026-07-18）
 
 只改 `lib/scanner/documentScanner.ts`，UI／下載／PDF／npm／OpenCV 載入方式皆未變動。
