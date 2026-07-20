@@ -34,8 +34,12 @@ lib/
     index.ts        對外唯一入口
     layout.ts        A4 排版計算（純函式）
     pdfExport.ts      用 pdf-lib 產生 PDF
+  ocr/             文字辨識模組，獨立於 React
+    index.ts        對外唯一入口
+    worker.ts         Tesseract worker 的 singleton 管理
+    recognize.ts      辨識邏輯
 types/          共用型別定義
-scripts/        建置輔助腳本（postinstall 用）
+scripts/        建置輔助腳本（postinstall 用，複製 OpenCV.js 與 Tesseract.js 的靜態資源）
 ```
 
 ## 技術棧與關鍵決策

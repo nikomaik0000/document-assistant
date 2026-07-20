@@ -1,5 +1,303 @@
 # Changelog
 
+## Phase 2E - 最小重現範例診斷：確認目前設定在乾淨環境下正常運作（2026-07-20）
+
+新增 `/ocr-test` 診斷頁面，`lib/ocr/worker.ts` / `lib/ocr/recognize.ts` 本身
+**沒有再修改**（上一輪 Phase 2D 的 `workerBlobURL: false` 已經是正確設定，
+這輪的任務是驗證，不是再改程式碼）。
+
+### 建立的最小重現範例
+`app/ocr-test/page.tsx`：完全獨立的頁面，不經過 OpenCV、手動裁切、
+ImageCard、Hook、Store 任何一層，只有「選圖 → createWorker() →
+recognize() → console.log(text)」，並提供兩個按鈕分別測試：
+- 「套件預設值」：完全不覆寫 workerPath/corePath/langPath
+- 「本專案自架路徑」：跟目前 `lib/ocr/worker.ts` 完全相同的設定
+  （workerPath/corePath/langPath + `workerBlobURL: false`）
+
+### 用真實瀏覽器實測兩種設定（這次環境剛好有現成可用的 Chromium）
+
+**套件預設值**（不覆寫任何 path）：**失敗**。Network 面板顯示：
+```
+HTTP 403 https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js
+```
+追到 tesseract.js 套件自己的 `defaultOptions.js`：
+```js
+workerPath: `https://cdn.jsdelivr.net/npm/tesseract.js@v${version}/dist/worker.min.js`
+```
+網址樣板多了一個不合法的 `v`（jsdelivr 正確格式應該是
+`tesseract.js@7.0.0`，不是 `tesseract.js@v7.0.0`），這是 **tesseract.js 7.0.0
+套件本身內建的 bug**，會讓完全沒有自訂 path 的預設安裝直接壞掉。這也解釋了
+importScripts 失敗時錯誤訊息為什麼有時候會怪：`event.message` 在某些瀏覽器對
+「載入失敗」事件不一定會填值，reject 出來就會是空字串或 undefined，不是正常
+的 Error 物件——這正是您上一輪看到 `raw error object: undefined` 的成因。
+
+**本專案自架路徑**（跟目前 `worker.ts` 相同設定）：**成功**。worker 建立、
+core 載入、語言資料載入、initialize、recognize 全部正常完成，0 個 HTTP
+錯誤、0 個例外。
+
+### 再次用完整 App 流程驗證（不是只測最小範例）
+為了排除「minimal 過但整合後又壞掉」的可能，額外把整個專案 **`node_modules`
+也刪掉重新 `npm install`**（完全乾淨環境，不是沿用任何快取），重新啟動
+`npm run dev`，直接透過 ImageCard 的「辨識文字」按鈕測試真實收據照片
+（Whole Foods Market 收據）：
+
+```
+[OCR] workerBlobURL: false（直接 new Worker(workerPath)，不透過 blob 中介）
+[OCR] loading tesseract core 100%
+[OCR] loading language traineddata 100%
+[OCR] initializing api 100%
+[OCR] ✓ Worker ready
+[OCR] Recognizing image... → recognizing text 100%
+[OCR] ✓ Recognition complete
+```
+辨識結果：`WHOLE FOODS MARKET - WESTPORT,CT 06880`、`365 BACON LS NP 4.99`、
+`BROTH CHIC NP 2.19`、`FLOUR ALMOND NP 11.99` 等收據品項皆正確辨識，
+**0 個 HTTP 4xx/5xx、0 個未捕捉例外**。
+
+### 結論
+目前 `lib/ocr/worker.ts` 的設定（Phase 2D 加上的 `workerBlobURL: false`）
+在完全乾淨的環境下、透過完整 App 流程實測是正常運作的，不需要再修改。
+
+### 一個可能的解釋，供您排查
+如果您那邊仍然看到 `undefined` 錯誤，最可能的原因是**瀏覽器快取了舊版的
+worker 或 bundle**（Worker 的快取在某些瀏覽器特別容易卡住舊版本）。建議：
+1. 完全關閉分頁，清除網站資料（或用無痕視窗開一次）
+2. 確認 `public/tesseract/` 是用這次乾淨 `npm install` 重新產生的
+3. 開 DevTools 的 Network 面板，篩選 `tesseract`，重新整理頁面後點「辨識文字」，
+   實際看每一個 `/tesseract/...` 請求的狀態碼（不是只看 Console 的錯誤訊息）
+4. 如果方便，也可以直接開 `http://localhost:3000/ocr-test` 這個新增的診斷頁面，
+   分別點兩個按鈕測試，看看是否跟這裡的結果一致
+
+`/ocr-test` 這支診斷頁面會保留在專案裡，方便之後排查用；確認不需要了也可以
+直接刪除 `app/ocr-test/` 整個資料夾，不影響主流程。
+
+### 驗證
+- ✅ `npm install`（完全重裝 node_modules）/ `npm run dev` / `npm run build` /
+  `tsc --noEmit` / `eslint`：皆成功
+- ✅ 最小重現範例（套件預設值）：重現 403 錯誤，確認是套件本身的 CDN 網址 bug
+- ✅ 最小重現範例（本專案自架路徑）：0 錯誤，辨識成功
+- ✅ 完整 App 流程（全新安裝 + 真實收據照片）：0 錯誤，辨識結果正確
+
+## Phase 2D - 修正 OCR Worker 真正的 Root Cause：workerBlobURL（2026-07-20）
+
+只改 `lib/ocr/worker.ts` 一支檔案。這次用真實瀏覽器（Playwright + 這個沙盒環境
+內建的 Chromium）實際跑過完整流程驗證，不是只做程式碼推論。
+
+### Root Cause（追到 tesseract.js 原始碼確認，非推測）
+您提供的 Console 錯誤：
+```
+Uncaught NetworkError: Failed to execute 'importScripts' on 'WorkerGlobalScope':
+The script at 'http://localhost:3000/tesseract/worker.min.js' failed to load.
+```
+
+追到 `node_modules/tesseract.js/src/worker/browser/spawnWorker.js`：
+```js
+module.exports = ({ workerPath, workerBlobURL }) => {
+  if (Blob && URL && workerBlobURL) {
+    const blob = new Blob([`importScripts("${workerPath}");`], {...});
+    worker = new Worker(URL.createObjectURL(blob));   // 預設走這條路
+  } else {
+    worker = new Worker(workerPath);                   // 我們其實只需要這條路
+  }
+};
+```
+
+`workerBlobURL` 預設是 `true`。Tesseract.js 並不是直接
+`new Worker(workerPath)`，而是先建立一個小 blob，內容就是
+`importScripts("http://localhost:3000/tesseract/worker.min.js");`，
+再用這個 **blob: URL** 建立 Worker，讓真正的 worker.min.js 是在 blob worker
+內部透過 `importScripts()` 載入的。
+
+這個「blob 包一層」的技巧，設計目的是讓 `workerPath` 可以指向**跨網域的 CDN**
+（因為 `new Worker(跨網域網址)` 會被瀏覽器直接擋掉，但 blob worker 內的
+`importScripts()` 可以載入跨網域腳本）。我們的 `worker.min.js` 是自己
+host 在 `/tesseract/` 的 same-origin 資源，根本不需要這層繞道，而這層
+blob-wrapper + importScripts 正是 Console 錯誤的來源。
+
+### 修正
+`createWorker()` 的選項加上 `workerBlobURL: false`，讓它變成單純、直接的
+`new Worker("http://localhost:3000/tesseract/worker.min.js")`，不再透過 blob
+中介。同時在建立 worker 前，把 workerPath／corePath／langPath 實際解析出來的
+絕對網址印到 console（用跟 tesseract.js 內部 `resolvePaths` 相同的
+`new URL(path, location.href)` 邏輯），不用再靠猜測。
+
+### 驗證：真實瀏覽器 E2E 測試（這次不是只做靜態分析）
+這個沙盒環境剛好已經內建可用的 Chromium（`/opt/pw-browsers/chromium-1194/`），
+用 Playwright 實際跑了 3 次完整流程（真實開瀏覽器、真實上傳圖片、真實點擊
+按鈕、擷取真實 Console 輸出與 Network 請求）：
+
+1. **英文真實照片**（Phase 2A 用過的教學範例圖）：上傳 → 自動校正成功 → 點擊
+   「辨識文字」→ worker 成功建立（`workerBlobURL: false` 生效，不再出現
+   importScripts 錯誤）→ core／語言資料／api 依序初始化完成 → 辨識成功，結果
+   與照片內容高度吻合，全程 **0 個 HTTP 4xx/5xx、0 個未捕捉例外**
+2. **繁體中文合成圖（含透視角度）**：worker 載入與辨識流程一樣完全正常、無任何
+   錯誤，但辨識出的文字是亂碼——這是另一個獨立的、跟這次 root cause 無關的
+   現象（見下方已知限制）
+3. **繁體中文合成圖（無透視角度，白底黑字）**：辨識結果完全正確——
+   「測試文件掃描系統」「自動校正與文字辨識」「繁體中文範例段落」三行一字不差
+
+第 2、3 項對照證實：**worker 載入與 OCR 引擎本身完全沒問題**，第 2 項的亂碼
+另有原因（見下方）。
+
+### 已用您要求的方式逐項確認
+1. worker 真正建立成功：✅（Console 出現 `✓ Worker ready`，無 importScripts 錯誤）
+2. worker ready：✅
+3. chi_tra 存在：✅（`loading language traineddata 100%`，繁中辨識結果正確）
+4. eng 存在：✅（英文辨識結果正確）
+5. initialize() 成功：✅（`initializing api 100%`）
+6. recognize() 真的被呼叫：✅（Console 有 `Recognizing image...` 與逐步 progress）
+7. image 真的有傳入：✅（Console 印出實際的 blob URL）
+8. wasm 初始化失敗：❌ 沒有發生（`loading tesseract core 100%` 正常完成）
+9. languagePath 錯誤：❌ 沒有發生（絕對網址確認正確，語言資料確實載入）
+10. worker 提前 terminate：❌ 沒有發生
+11. 圖片格式造成 Exception：❌ 沒有發生（Network 面板／`requestfailed` 監聽皆為 0 筆失敗）
+
+### 驗證
+- ✅ `npm install` / `npm run dev` / `npm run build` / `npx tsc --noEmit` /
+  `npx eslint .`：乾淨環境下皆成功
+- ✅ 真實瀏覽器 E2E（見上）
+
+### 已知限制（誠實說明，跟這次修正的 bug 無關）
+繁體中文＋透視角度合成測試圖的辨識結果是亂碼，用同一張圖但去除透視角度後
+（純白底黑字）辨識完全正確，代表問題出在「校正後的圖片內容」本身讓 Tesseract
+難以辨識（可能是該張合成圖校正後文字有輕微旋轉或模糊），跟這次修正的 worker
+載入問題是兩件事。這只在我自己合成的測試圖上出現，不確定是否會發生在您實際
+拍攝的照片上；如果您實測繁體中文文件辨識結果不準確，麻煩提供實際照片，我再
+針對性排查（例如檢查校正後圖片的旋轉角度是否正確）。
+
+## Phase 2C - OCR 除錯：完整 Debug Log + 修正 worker 卡死問題（2026-07-19）
+
+只改 `lib/ocr/worker.ts`、`lib/ocr/recognize.ts` 兩支檔案。OpenCV、手動裁切、
+PDF 匯出、UI 排版皆未修改。
+
+### 調查過程（誠實說明：沒有 100% 確定單一根因，但排除了多個可能性、修了一個真的
+### bug）
+逐行讀了 Tesseract.js 原始碼（`resolvePaths.js`、`getCore.js`、
+`worker-script/index.js`、`loadImage.js`、`wasm-feature-detect`），確認：
+- `workerPath`／`corePath`／`langPath` 在送進 worker 前，會先用
+  `new URL(path, window.location.href)` 轉成完整絕對網址，不是相對路徑，
+  排除路徑解析錯誤的可能
+- `getCore.js` 選用的 `tesseract-core-simd-lstm.wasm.js`（我們有複製這個檔案）
+  是 wasm 直接內嵌在 JS 裡的版本，不需要另外抓 `.wasm` 檔，排除「wasm 檔案
+  没抓到」的可能
+- `loadImage()`（把圖片轉成 bytes 送進 worker）是在**主執行緒**執行、不是在
+  worker 內部，所以 blob: URL 跨執行緒失效的疑慮也可以排除
+- `wasm-feature-detect`（判斷瀏覽器支援 simd/relaxedSimd）完全不連外部資源，
+  純本機 wasm 測試，排除
+- 實測 `http://localhost:3000/tesseract/lang-data/eng.traineddata.gz` 的
+  response header，確認是 `Content-Type: application/gzip`、沒有
+  `Content-Encoding: gzip`（不會被自動解壓縮），排除雙重解壓縮的可能
+
+### 找到並修正的真實 Bug
+`lib/ocr/worker.ts` 原本的寫法：
+```ts
+if (!workerPromise) {
+  workerPromise = createWorker(...);
+}
+```
+問題：一旦這個 Promise reject 過一次（不管什麼原因——網路瞬斷、瀏覽器暫時性
+問題等等），`workerPromise` 會**永久卡在「已 reject」的狀態**。之後不論使用者
+按幾次「辨識文字」，`getOcrWorker()` 都只會回傳同一個早就失敗的 Promise，
+等於卡死，必須重新整理整個網頁才能再試一次。這可以解釋「每次點擊都顯示辨識
+失敗」的現象：只要第一次初始化不順利過一次，後面就永遠立即失敗，就算當下
+根本原因已經不存在了。
+
+修正：初始化失敗時清空 `workerPromise`，下一次呼叫會重新嘗試建立 worker，
+不會卡死。
+
+### 新增：完整分階段 Debug Log
+- `worker.ts`：接上 Tesseract.js 官方支援的 `logger` 回呼，worker 內部每個
+  階段（loading tesseract core / loading language traineddata / initializing
+  api / recognizing text）都會即時印到 `console.log`，格式為 `[OCR] <狀態> <進度%>`
+- `recognize.ts`：明確標記每一步（Loading worker → Worker 可用 → Recognizing
+  image → Recognition complete），失敗時用 `logFullError()` 把完整例外印出來
+  （`error.name`／`error.message`／`error.stack`／原始物件／嘗試 JSON
+  序列化），不會只顯示一句「辨識失敗」
+
+### 驗證
+- ✅ `npm install` / `npm run dev` / `npm run build`：乾淨環境下皆成功
+- ✅ `tsc --noEmit` / `eslint`：無錯誤
+- ✅ 實測 `/tesseract/worker.min.js`、三個 core wasm.js、兩個語言資料檔皆回應
+  HTTP 200，且語言資料檔案的 response header 沒有意外的 Content-Encoding
+- ✅ 用 Node 重新載入本次乾淨安裝後複製出來的實際檔案，重新驗證：
+  - 英文（對 page-result.png 真實照片內容辨識）：結果正確，內容與照片吻合
+  - 繁體中文（合成文字圖）：「這是一份測試文件」「自動辨識繁體中文」
+    「文件掃描與校正工具」三行完全正確辨識
+  - `logger` 回呼確認會即時回報 `recognizing text 23%`／`47%`／`100%` 等進度，
+    格式與這次接進 `worker.ts` 的一致
+
+### 已知限制（誠實說明）
+沒辦法在沙盒環境重現瀏覽器裡「Worker + importScripts」的實際執行環境，所以
+無法 100% 肯定原本失敗的根本原因是不是就是上面修正的「worker 卡死」問題，
+只能確認：這是一個真實存在、會導致同樣症狀（每次點擊都立即失敗）的 bug，
+且已修正。麻煩您這次實測時，改成點擊「辨識文字」後**直接開瀏覽器 DevTools
+的 Console**，這次應該會看到完整的分階段 log；如果還是失敗，Console 會印出
+真正的例外訊息（`error.message`、`error.stack` 等），麻煩把那段訊息貼給我，
+就能確定真正的根因並精準修正，不用再靠我這邊反覆猜測。
+
+## Phase 3A - OCR（文字辨識）MVP（2026-07-19）
+
+新增功能，不影響現有功能：既有 UI、自動偵測、手動裁切、下載 JPG、PDF 匯出、
+npm 設定皆未修改。
+
+### 操作方式
+1. 圖片完成自動校正後（成功或失敗皆可，失敗時會用原圖），卡片上會出現「辨識文字」
+   按鈕，位置在「下載 JPG」上方
+2. 點擊後按鈕變成「辨識中…」並顯示 loading 動畫
+3. 完成後卡片下方展開辨識結果區塊，用 `textarea` 顯示辨識出的文字，可直接編輯
+4. 結果下方有「複製文字」按鈕，點擊呼叫 `navigator.clipboard.writeText()`，
+   成功後按鈕文字暫時變成「已複製」
+5. 若辨識失敗，顯示「辨識失敗，請重新嘗試。」，不會讓 App crash，按鈕會恢復
+   成可再次點擊的狀態
+
+### OCR 引擎：Tesseract.js，全程瀏覽器端執行
+- 使用 `createWorker(["eng", "chi_tra"])`，同時支援英文與繁體中文
+- Worker 只會初始化一次（singleton，見 `lib/ocr/worker.ts`），所有圖片的辨識請求
+  共用同一個 worker，不會每次都重新載入引擎與語言資料
+- **worker script、OCR 核心（wasm）、語言資料皆為本專案自行 host 的靜態資源**
+  （`scripts/copy-tesseract-assets.mjs`，`npm install` 後的 postinstall 自動從
+  node_modules 複製到 `public/tesseract/`），不依賴外部 CDN（Tesseract.js 預設
+  會去 jsdelivr 抓這些檔案，這裡改成自行 host，跟 OpenCV.js 的做法一致）
+- 全程不會把圖片上傳到任何伺服器或 API：圖片是瀏覽器記憶體裡的 object URL，
+  OCR 運算本身也是 wasm 在瀏覽器內執行
+
+### 修改／新增檔案
+新增（獨立模組，方便下一階段擴充 AI 摘要／翻譯／關鍵字搜尋）：
+- `lib/ocr/worker.ts`：Tesseract worker 的 singleton 管理
+- `lib/ocr/recognize.ts`：辨識邏輯，錯誤永遠回傳 `status: "error"`，不會拋例外
+- `lib/ocr/index.ts`：對外唯一入口
+- `scripts/copy-tesseract-assets.mjs`：postinstall 用，複製 Tesseract.js 靜態資源
+
+修改：
+- `package.json`：新增 `tesseract.js`、`@tesseract.js-data/eng`、
+  `@tesseract.js-data/chi_tra` 依賴，postinstall 串接新的複製腳本
+- `.gitignore`：排除自動複製的 `public/tesseract/`
+- `components/ImageCard.tsx`：新增「辨識文字」按鈕與結果區塊（本地 component
+  state，沒有更動全域的圖片狀態管理或型別）
+
+### 驗證
+- ✅ `npm install`：乾淨環境成功，postinstall 正確複製 Tesseract 靜態資源
+  （worker.min.js、3 組 wasm 核心變體、英文與繁中語言資料，共 12 個檔案）
+- ✅ `npm run dev`：成功啟動，實測所有 `/tesseract/...` 靜態資源皆回應 HTTP 200
+- ✅ `npm run build`：成功，static export 的 `out/tesseract/` 確認包含全部檔案
+- ✅ `tsc --noEmit` / `eslint`：無錯誤
+- **OCR 引擎與語言資料本身的正確性**：用 Node 直接載入本專案 postinstall 複製出來
+  的實際檔案（不是另外重新下載一份），驗證：
+  - 英文：對真實照片（page.jpg，前面 Phase 2A 用過的教學範例圖）辨識，結果與
+    照片內容高度吻合（含完整段落文字，僅少數因照片打孔／邊緣造成的個別字元誤判）
+  - 繁體中文：合成文字圖片「這是一份測試文件／自動辨識繁體中文／文件掃描與校正
+    工具」，三行文字完全正確辨識（中文逐字間會有空格是 Tesseract 的正常輸出格式）
+  - 雙語言同時載入（跟正式程式 `worker.ts` 完全相同的設定）：英文與中文皆正確辨識，
+    worker 初始化約 0.5 秒
+
+### 已知限制
+- 「辨識文字」按鈕點擊、loading 動畫、textarea 編輯、複製文字這些實際瀏覽器互動，
+  沙盒沒有真實瀏覽器可以操作測試，已驗證的是 OCR 引擎本身的正確性與資源載入路徑；
+  麻煩您實機測試按鈕互動與畫面呈現是否符合預期
+- 語言資料檔案（英文 2.9MB、繁中 1.6MB）會在 `npm install` 時下載，屬本專案自行
+  host 的静態資源，第一次執行 OCR 時瀏覽器需要載入這些檔案（同源請求，不需要連
+  外部網路）
+
 ## Phase 2B - Manual Crop（手動調整四個角）（2026-07-18）
 
 新增功能，不影響現有功能：PDF 匯出、下載 JPG、npm 設定、OpenCV 自動偵測演算法
