@@ -1,5 +1,83 @@
 # Changelog
 
+## Phase 2E - 最小重現範例診斷：確認目前設定在乾淨環境下正常運作（2026-07-20）
+
+新增 `/ocr-test` 診斷頁面，`lib/ocr/worker.ts` / `lib/ocr/recognize.ts` 本身
+**沒有再修改**（上一輪 Phase 2D 的 `workerBlobURL: false` 已經是正確設定，
+這輪的任務是驗證，不是再改程式碼）。
+
+### 建立的最小重現範例
+`app/ocr-test/page.tsx`：完全獨立的頁面，不經過 OpenCV、手動裁切、
+ImageCard、Hook、Store 任何一層，只有「選圖 → createWorker() →
+recognize() → console.log(text)」，並提供兩個按鈕分別測試：
+- 「套件預設值」：完全不覆寫 workerPath/corePath/langPath
+- 「本專案自架路徑」：跟目前 `lib/ocr/worker.ts` 完全相同的設定
+  （workerPath/corePath/langPath + `workerBlobURL: false`）
+
+### 用真實瀏覽器實測兩種設定（這次環境剛好有現成可用的 Chromium）
+
+**套件預設值**（不覆寫任何 path）：**失敗**。Network 面板顯示：
+```
+HTTP 403 https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js
+```
+追到 tesseract.js 套件自己的 `defaultOptions.js`：
+```js
+workerPath: `https://cdn.jsdelivr.net/npm/tesseract.js@v${version}/dist/worker.min.js`
+```
+網址樣板多了一個不合法的 `v`（jsdelivr 正確格式應該是
+`tesseract.js@7.0.0`，不是 `tesseract.js@v7.0.0`），這是 **tesseract.js 7.0.0
+套件本身內建的 bug**，會讓完全沒有自訂 path 的預設安裝直接壞掉。這也解釋了
+importScripts 失敗時錯誤訊息為什麼有時候會怪：`event.message` 在某些瀏覽器對
+「載入失敗」事件不一定會填值，reject 出來就會是空字串或 undefined，不是正常
+的 Error 物件——這正是您上一輪看到 `raw error object: undefined` 的成因。
+
+**本專案自架路徑**（跟目前 `worker.ts` 相同設定）：**成功**。worker 建立、
+core 載入、語言資料載入、initialize、recognize 全部正常完成，0 個 HTTP
+錯誤、0 個例外。
+
+### 再次用完整 App 流程驗證（不是只測最小範例）
+為了排除「minimal 過但整合後又壞掉」的可能，額外把整個專案 **`node_modules`
+也刪掉重新 `npm install`**（完全乾淨環境，不是沿用任何快取），重新啟動
+`npm run dev`，直接透過 ImageCard 的「辨識文字」按鈕測試真實收據照片
+（Whole Foods Market 收據）：
+
+```
+[OCR] workerBlobURL: false（直接 new Worker(workerPath)，不透過 blob 中介）
+[OCR] loading tesseract core 100%
+[OCR] loading language traineddata 100%
+[OCR] initializing api 100%
+[OCR] ✓ Worker ready
+[OCR] Recognizing image... → recognizing text 100%
+[OCR] ✓ Recognition complete
+```
+辨識結果：`WHOLE FOODS MARKET - WESTPORT,CT 06880`、`365 BACON LS NP 4.99`、
+`BROTH CHIC NP 2.19`、`FLOUR ALMOND NP 11.99` 等收據品項皆正確辨識，
+**0 個 HTTP 4xx/5xx、0 個未捕捉例外**。
+
+### 結論
+目前 `lib/ocr/worker.ts` 的設定（Phase 2D 加上的 `workerBlobURL: false`）
+在完全乾淨的環境下、透過完整 App 流程實測是正常運作的，不需要再修改。
+
+### 一個可能的解釋，供您排查
+如果您那邊仍然看到 `undefined` 錯誤，最可能的原因是**瀏覽器快取了舊版的
+worker 或 bundle**（Worker 的快取在某些瀏覽器特別容易卡住舊版本）。建議：
+1. 完全關閉分頁，清除網站資料（或用無痕視窗開一次）
+2. 確認 `public/tesseract/` 是用這次乾淨 `npm install` 重新產生的
+3. 開 DevTools 的 Network 面板，篩選 `tesseract`，重新整理頁面後點「辨識文字」，
+   實際看每一個 `/tesseract/...` 請求的狀態碼（不是只看 Console 的錯誤訊息）
+4. 如果方便，也可以直接開 `http://localhost:3000/ocr-test` 這個新增的診斷頁面，
+   分別點兩個按鈕測試，看看是否跟這裡的結果一致
+
+`/ocr-test` 這支診斷頁面會保留在專案裡，方便之後排查用；確認不需要了也可以
+直接刪除 `app/ocr-test/` 整個資料夾，不影響主流程。
+
+### 驗證
+- ✅ `npm install`（完全重裝 node_modules）/ `npm run dev` / `npm run build` /
+  `tsc --noEmit` / `eslint`：皆成功
+- ✅ 最小重現範例（套件預設值）：重現 403 錯誤，確認是套件本身的 CDN 網址 bug
+- ✅ 最小重現範例（本專案自架路徑）：0 錯誤，辨識成功
+- ✅ 完整 App 流程（全新安裝 + 真實收據照片）：0 錯誤，辨識結果正確
+
 ## Phase 2D - 修正 OCR Worker 真正的 Root Cause：workerBlobURL（2026-07-20）
 
 只改 `lib/ocr/worker.ts` 一支檔案。這次用真實瀏覽器（Playwright + 這個沙盒環境
