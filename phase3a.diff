@@ -1,0 +1,416 @@
+diff --git a/.gitignore b/.gitignore
+index 9d5d003..96bbbf8 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -26,3 +26,6 @@ next-env.d.ts
+ 
+ # auto-copied by scripts/copy-opencv-assets.mjs (postinstall)
+ /public/opencv/
++
++# auto-copied by scripts/copy-tesseract-assets.mjs (postinstall)
++/public/tesseract/
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 031b93a..ce13e96 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,68 @@
+ # Changelog
+ 
++## Phase 3A - OCR（文字辨識）MVP（2026-07-19）
++
++新增功能，不影響現有功能：既有 UI、自動偵測、手動裁切、下載 JPG、PDF 匯出、
++npm 設定皆未修改。
++
++### 操作方式
++1. 圖片完成自動校正後（成功或失敗皆可，失敗時會用原圖），卡片上會出現「辨識文字」
++   按鈕，位置在「下載 JPG」上方
++2. 點擊後按鈕變成「辨識中…」並顯示 loading 動畫
++3. 完成後卡片下方展開辨識結果區塊，用 `textarea` 顯示辨識出的文字，可直接編輯
++4. 結果下方有「複製文字」按鈕，點擊呼叫 `navigator.clipboard.writeText()`，
++   成功後按鈕文字暫時變成「已複製」
++5. 若辨識失敗，顯示「辨識失敗，請重新嘗試。」，不會讓 App crash，按鈕會恢復
++   成可再次點擊的狀態
++
++### OCR 引擎：Tesseract.js，全程瀏覽器端執行
++- 使用 `createWorker(["eng", "chi_tra"])`，同時支援英文與繁體中文
++- Worker 只會初始化一次（singleton，見 `lib/ocr/worker.ts`），所有圖片的辨識請求
++  共用同一個 worker，不會每次都重新載入引擎與語言資料
++- **worker script、OCR 核心（wasm）、語言資料皆為本專案自行 host 的靜態資源**
++  （`scripts/copy-tesseract-assets.mjs`，`npm install` 後的 postinstall 自動從
++  node_modules 複製到 `public/tesseract/`），不依賴外部 CDN（Tesseract.js 預設
++  會去 jsdelivr 抓這些檔案，這裡改成自行 host，跟 OpenCV.js 的做法一致）
++- 全程不會把圖片上傳到任何伺服器或 API：圖片是瀏覽器記憶體裡的 object URL，
++  OCR 運算本身也是 wasm 在瀏覽器內執行
++
++### 修改／新增檔案
++新增（獨立模組，方便下一階段擴充 AI 摘要／翻譯／關鍵字搜尋）：
++- `lib/ocr/worker.ts`：Tesseract worker 的 singleton 管理
++- `lib/ocr/recognize.ts`：辨識邏輯，錯誤永遠回傳 `status: "error"`，不會拋例外
++- `lib/ocr/index.ts`：對外唯一入口
++- `scripts/copy-tesseract-assets.mjs`：postinstall 用，複製 Tesseract.js 靜態資源
++
++修改：
++- `package.json`：新增 `tesseract.js`、`@tesseract.js-data/eng`、
++  `@tesseract.js-data/chi_tra` 依賴，postinstall 串接新的複製腳本
++- `.gitignore`：排除自動複製的 `public/tesseract/`
++- `components/ImageCard.tsx`：新增「辨識文字」按鈕與結果區塊（本地 component
++  state，沒有更動全域的圖片狀態管理或型別）
++
++### 驗證
++- ✅ `npm install`：乾淨環境成功，postinstall 正確複製 Tesseract 靜態資源
++  （worker.min.js、3 組 wasm 核心變體、英文與繁中語言資料，共 12 個檔案）
++- ✅ `npm run dev`：成功啟動，實測所有 `/tesseract/...` 靜態資源皆回應 HTTP 200
++- ✅ `npm run build`：成功，static export 的 `out/tesseract/` 確認包含全部檔案
++- ✅ `tsc --noEmit` / `eslint`：無錯誤
++- **OCR 引擎與語言資料本身的正確性**：用 Node 直接載入本專案 postinstall 複製出來
++  的實際檔案（不是另外重新下載一份），驗證：
++  - 英文：對真實照片（page.jpg，前面 Phase 2A 用過的教學範例圖）辨識，結果與
++    照片內容高度吻合（含完整段落文字，僅少數因照片打孔／邊緣造成的個別字元誤判）
++  - 繁體中文：合成文字圖片「這是一份測試文件／自動辨識繁體中文／文件掃描與校正
++    工具」，三行文字完全正確辨識（中文逐字間會有空格是 Tesseract 的正常輸出格式）
++  - 雙語言同時載入（跟正式程式 `worker.ts` 完全相同的設定）：英文與中文皆正確辨識，
++    worker 初始化約 0.5 秒
++
++### 已知限制
++- 「辨識文字」按鈕點擊、loading 動畫、textarea 編輯、複製文字這些實際瀏覽器互動，
++  沙盒沒有真實瀏覽器可以操作測試，已驗證的是 OCR 引擎本身的正確性與資源載入路徑；
++  麻煩您實機測試按鈕互動與畫面呈現是否符合預期
++- 語言資料檔案（英文 2.9MB、繁中 1.6MB）會在 `npm install` 時下載，屬本專案自行
++  host 的静態資源，第一次執行 OCR 時瀏覽器需要載入這些檔案（同源請求，不需要連
++  外部網路）
++
+ ## Phase 2B - Manual Crop（手動調整四個角）（2026-07-18）
+ 
+ 新增功能，不影響現有功能：PDF 匯出、下載 JPG、npm 設定、OpenCV 自動偵測演算法
+diff --git a/README.md b/README.md
+index cf6b6a6..1e9e25f 100644
+--- a/README.md
++++ b/README.md
+@@ -34,8 +34,12 @@ lib/
+     index.ts        對外唯一入口
+     layout.ts        A4 排版計算（純函式）
+     pdfExport.ts      用 pdf-lib 產生 PDF
++  ocr/             文字辨識模組，獨立於 React
++    index.ts        對外唯一入口
++    worker.ts         Tesseract worker 的 singleton 管理
++    recognize.ts      辨識邏輯
+ types/          共用型別定義
+-scripts/        建置輔助腳本（postinstall 用）
++scripts/        建置輔助腳本（postinstall 用，複製 OpenCV.js 與 Tesseract.js 的靜態資源）
+ ```
+ 
+ ## 技術棧與關鍵決策
+diff --git a/components/ImageCard.tsx b/components/ImageCard.tsx
+index f3b4c2d..9b2d45d 100644
+--- a/components/ImageCard.tsx
++++ b/components/ImageCard.tsx
+@@ -8,6 +8,7 @@ import { DocumentImage } from "@/types/image";
+ import { formatFileSize } from "@/lib/image";
+ import { triggerUrlDownload } from "@/lib/download";
+ import { useImageStore } from "@/hooks/useImageStore";
++import { recognizeText } from "@/lib/ocr";
+ import CropEditorModal from "./CropEditorModal";
+ 
+ interface ImageCardProps {
+@@ -20,10 +21,16 @@ function jpgFileName(originalFileName: string): string {
+   return `${base}_corrected.jpg`;
+ }
+ 
++type OcrState = "idle" | "recognizing" | "success" | "error";
++
+ export default function ImageCard({ image, index }: ImageCardProps) {
+   const { removeImage } = useImageStore();
+   const [showOriginal, setShowOriginal] = useState(false);
+   const [isCropEditorOpen, setIsCropEditorOpen] = useState(false);
++  const [ocrState, setOcrState] = useState<OcrState>("idle");
++  const [ocrText, setOcrText] = useState("");
++  const [ocrError, setOcrError] = useState<string | null>(null);
++  const [copyConfirmed, setCopyConfirmed] = useState(false);
+   const {
+     attributes,
+     listeners,
+@@ -41,8 +48,34 @@ export default function ImageCard({ image, index }: ImageCardProps) {
+   const hasCorrected = image.status === "corrected" && !!image.correctedUrl;
+   const hasFailed = image.status === "failed";
+   const canManualCrop = image.status === "corrected" || image.status === "failed";
++  // 依需求：若尚未校正，也允許直接對原圖辨識文字，只要不是還在自動校正處理中即可
++  const canRecognizeText = image.status !== "processing";
+   const displayUrl = hasCorrected && !showOriginal ? image.correctedUrl! : image.originalUrl;
+ 
++  async function handleRecognizeText() {
++    setOcrState("recognizing");
++    setOcrError(null);
++    const targetUrl = image.correctedUrl ?? image.originalUrl;
++    const outcome = await recognizeText(targetUrl);
++    if (outcome.status === "success") {
++      setOcrText(outcome.text ?? "");
++      setOcrState("success");
++    } else {
++      setOcrError(outcome.message ?? "辨識失敗，請重新嘗試。");
++      setOcrState("error");
++    }
++  }
++
++  async function handleCopyText() {
++    try {
++      await navigator.clipboard.writeText(ocrText);
++      setCopyConfirmed(true);
++      setTimeout(() => setCopyConfirmed(false), 2000);
++    } catch {
++      setOcrError("複製失敗，請手動選取文字複製。");
++    }
++  }
++
+   return (
+     <div
+       ref={setNodeRef}
+@@ -122,6 +155,49 @@ export default function ImageCard({ image, index }: ImageCardProps) {
+         </button>
+       </div>
+ 
++      {canRecognizeText && (
++        <div className="border-t border-border px-3 pt-2">
++          <button
++            type="button"
++            onClick={handleRecognizeText}
++            disabled={ocrState === "recognizing"}
++            className="flex w-full items-center justify-center gap-2 rounded-control border border-border px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
++          >
++            {ocrState === "recognizing" && (
++              <span
++                className="h-3 w-3 animate-spin rounded-full border-2 border-ink-faint/40 border-t-ink-muted"
++                aria-hidden
++              />
++            )}
++            {ocrState === "recognizing" ? "辨識中…" : "辨識文字"}
++          </button>
++
++          {ocrState === "error" && (
++            <p className="mt-1.5 text-xs text-danger">{ocrError}</p>
++          )}
++
++          {ocrState === "success" && (
++            <div className="mt-2 space-y-1.5 pb-1">
++              <p className="text-center text-xs text-ink-faint">──── 辨識結果 ────</p>
++              <textarea
++                value={ocrText}
++                onChange={(e) => setOcrText(e.target.value)}
++                rows={5}
++                className="w-full resize-y rounded-control border border-border p-2 text-xs text-ink focus:border-accent focus:outline-none"
++              />
++              {ocrError && <p className="text-xs text-danger">{ocrError}</p>}
++              <button
++                type="button"
++                onClick={handleCopyText}
++                className="w-full rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
++              >
++                {copyConfirmed ? "已複製" : "複製文字"}
++              </button>
++            </div>
++          )}
++        </div>
++      )}
++
+       {(hasCorrected || canManualCrop) && (
+         <div className="flex gap-2 border-t border-border px-3 pb-3 pt-2">
+           {hasCorrected && (
+diff --git a/lib/ocr/index.ts b/lib/ocr/index.ts
+new file mode 100644
+index 0000000..31deb1d
+--- /dev/null
++++ b/lib/ocr/index.ts
+@@ -0,0 +1,9 @@
++/**
++ * lib/ocr 對外的唯一入口。React 端只應該 import 這支檔案。
++ *
++ * 保持獨立成一個模組（跟 lib/scanner、lib/pdf 同樣的架構慣例），方便下一階段
++ * 加入 AI 摘要、翻譯、關鍵字搜尋等功能時，可以直接在 lib/ocr/ 底下擴充，
++ * 不需要更動這次的辨識邏輯本身。
++ */
++export { recognizeText } from "./recognize";
++export type { OcrOutcome } from "./recognize";
+diff --git a/lib/ocr/recognize.ts b/lib/ocr/recognize.ts
+new file mode 100644
+index 0000000..aa20836
+--- /dev/null
++++ b/lib/ocr/recognize.ts
+@@ -0,0 +1,33 @@
++/**
++ * 文字辨識（OCR）核心邏輯。
++ * 依需求範圍：只做辨識，不做翻譯、摘要、關鍵字搜尋等後續處理，
++ * 讓這支檔案未來要接上那些功能時，職責單純、容易擴充。
++ */
++import { getOcrWorker } from "./worker";
++
++export interface OcrOutcome {
++  status: "success" | "error";
++  /** 辨識出的文字（已去除前後空白），status 為 "success" 時一定有值 */
++  text?: string;
++  /** status 為 "error" 時的提示訊息，供 UI 直接顯示 */
++  message?: string;
++}
++
++const OCR_ERROR_MESSAGE = "辨識失敗，請重新嘗試。";
++
++/**
++ * 對指定圖片（object URL）執行 OCR，回傳辨識出的文字。
++ * 不會拋出例外：任何失敗都會回傳 status "error" + message，UI 端只要照顯示即可，
++ * 不會讓整個 App crash。
++ */
++export async function recognizeText(imageUrl: string): Promise<OcrOutcome> {
++  try {
++    const worker = await getOcrWorker();
++    const { data } = await worker.recognize(imageUrl);
++    const text = (data.text ?? "").trim();
++    return { status: "success", text };
++  } catch (error) {
++    console.error("[ocr] 辨識失敗", error);
++    return { status: "error", message: OCR_ERROR_MESSAGE };
++  }
++}
+diff --git a/lib/ocr/worker.ts b/lib/ocr/worker.ts
+new file mode 100644
+index 0000000..69e0040
+--- /dev/null
++++ b/lib/ocr/worker.ts
+@@ -0,0 +1,33 @@
++/**
++ * Tesseract.js worker 的懶初始化與 singleton 管理。
++ *
++ * 依需求「初始化 Worker 僅建立一次」：第一次呼叫 getOcrWorker() 才會真的建立
++ * worker，之後所有辨識請求都重複使用同一個 worker、同一份已載入的語言資料，
++ * 不會每次辨識都重新初始化。
++ *
++ * 全程在瀏覽器端執行、不需要任何後端 API：
++ * worker script、OCR 核心（wasm）、語言資料（繁體中文＋英文）都是本專案自行
++ * host 的靜態資源（見 scripts/copy-tesseract-assets.mjs，npm install 時
++ * 自動從 node_modules 複製到 public/tesseract/），不會連到外部 CDN，
++ * 也完全不會把圖片上傳到任何伺服器——圖片是直接在瀏覽器記憶體裡處理的
++ * object URL，從頭到尾沒有網路傳輸圖片內容這件事。
++ */
++import { createWorker, type Worker } from "tesseract.js";
++
++let workerPromise: Promise<Worker> | null = null;
++
++export function getOcrWorker(): Promise<Worker> {
++  if (typeof window === "undefined") {
++    return Promise.reject(new Error("OCR 只能在瀏覽器環境執行"));
++  }
++
++  if (!workerPromise) {
++    workerPromise = createWorker(["eng", "chi_tra"], undefined, {
++      workerPath: "/tesseract/worker.min.js",
++      corePath: "/tesseract/core",
++      langPath: "/tesseract/lang-data",
++    });
++  }
++
++  return workerPromise;
++}
+diff --git a/package.json b/package.json
+index d406341..179fef8 100644
+--- a/package.json
++++ b/package.json
+@@ -8,19 +8,22 @@
+     "start": "next start",
+     "lint": "eslint .",
+     "typecheck": "tsc --noEmit",
+-    "postinstall": "node scripts/copy-opencv-assets.mjs"
++    "postinstall": "node scripts/copy-opencv-assets.mjs && node scripts/copy-tesseract-assets.mjs"
+   },
+   "dependencies": {
+     "@dnd-kit/core": "^6.1.0",
+     "@dnd-kit/sortable": "^8.0.0",
+     "@dnd-kit/utilities": "^3.2.2",
+     "@techstark/opencv-js": "^5.0.0-release.1",
++    "@tesseract.js-data/chi_tra": "^1.0.0",
++    "@tesseract.js-data/eng": "^1.0.0",
+     "clsx": "^2.1.1",
+     "next": "15.5.20",
+     "pdf-lib": "^1.17.1",
+     "react": "^19.0.0",
+     "react-dom": "^19.0.0",
+-    "react-dropzone": "^14.3.5"
++    "react-dropzone": "^14.3.5",
++    "tesseract.js": "^7.0.0"
+   },
+   "devDependencies": {
+     "@eslint/eslintrc": "^3.2.0",
+diff --git a/scripts/copy-tesseract-assets.mjs b/scripts/copy-tesseract-assets.mjs
+new file mode 100644
+index 0000000..6aaadfd
+--- /dev/null
++++ b/scripts/copy-tesseract-assets.mjs
+@@ -0,0 +1,72 @@
++// 將 Tesseract.js 需要的靜態資源（worker script、OCR 核心 wasm、語言資料）
++// 複製到 public/tesseract/，讓 OCR 全程使用本專案自己 host 的檔案，執行期不需要
++// 連到任何外部 CDN（tesseract.js 預設會去 jsdelivr 抓這些檔案，這裡改成用
++// npm 套件的方式先下載好、複製成靜態資源，跟 copy-opencv-assets.mjs 是同樣的做法）。
++//
++// 不把這些檔案提交進 git（見 .gitignore），每次 `npm install` 後由這支
++// postinstall script 自動從 node_modules 複製一份。
++//
++// 只複製 LSTM-only 的核心變體（simd / relaxedsimd / 一般版本三選一由瀏覽器自動偵測），
++// 因為 Tesseract.js createWorker 預設的 OEM 就是 LSTM_ONLY，不需要完整的 legacy 引擎。
++
++import { copyFile, mkdir } from "node:fs/promises";
++import { existsSync } from "node:fs";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const __dirname = path.dirname(fileURLToPath(import.meta.url));
++const projectRoot = path.resolve(__dirname, "..");
++const targetRoot = path.join(projectRoot, "public", "tesseract");
++
++async function copyIfExists(source, target) {
++  if (!existsSync(source)) {
++    console.warn("[copy-tesseract-assets] 找不到檔案，略過：", source);
++    return;
++  }
++  await copyFile(source, target);
++}
++
++async function main() {
++  await mkdir(path.join(targetRoot, "core"), { recursive: true });
++  await mkdir(path.join(targetRoot, "lang-data"), { recursive: true });
++
++  // worker script
++  await copyIfExists(
++    path.join(projectRoot, "node_modules", "tesseract.js", "dist", "worker.min.js"),
++    path.join(targetRoot, "worker.min.js")
++  );
++
++  // OCR 核心（wasm），只要 LSTM-only 的三種變體（一般 / SIMD / relaxed SIMD）
++  const coreDir = path.join(projectRoot, "node_modules", "tesseract.js-core");
++  const coreFiles = [
++    "tesseract-core-lstm.js",
++    "tesseract-core-lstm.wasm",
++    "tesseract-core-lstm.wasm.js",
++    "tesseract-core-simd-lstm.js",
++    "tesseract-core-simd-lstm.wasm",
++    "tesseract-core-simd-lstm.wasm.js",
++    "tesseract-core-relaxedsimd-lstm.js",
++    "tesseract-core-relaxedsimd-lstm.wasm",
++    "tesseract-core-relaxedsimd-lstm.wasm.js",
++  ];
++  for (const file of coreFiles) {
++    await copyIfExists(path.join(coreDir, file), path.join(targetRoot, "core", file));
++  }
++
++  // 語言資料（繁體中文＋英文），用 LSTM_ONLY 預設會用到的 4.0.0_best_int 版本
++  const langs = [
++    { pkg: "@tesseract.js-data/eng", file: "eng.traineddata.gz" },
++    { pkg: "@tesseract.js-data/chi_tra", file: "chi_tra.traineddata.gz" },
++  ];
++  for (const { pkg, file } of langs) {
++    const source = path.join(projectRoot, "node_modules", pkg, "4.0.0_best_int", file);
++    await copyIfExists(source, path.join(targetRoot, "lang-data", file));
++  }
++
++  console.log("[copy-tesseract-assets] 完成複製 Tesseract.js 靜態資源到 public/tesseract/");
++}
++
++main().catch((error) => {
++  console.error("[copy-tesseract-assets] 複製失敗", error);
++  process.exitCode = 1;
++});

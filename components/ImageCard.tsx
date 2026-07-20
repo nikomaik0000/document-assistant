@@ -8,6 +8,7 @@ import { DocumentImage } from "@/types/image";
 import { formatFileSize } from "@/lib/image";
 import { triggerUrlDownload } from "@/lib/download";
 import { useImageStore } from "@/hooks/useImageStore";
+import { recognizeText } from "@/lib/ocr";
 import CropEditorModal from "./CropEditorModal";
 
 interface ImageCardProps {
@@ -20,10 +21,16 @@ function jpgFileName(originalFileName: string): string {
   return `${base}_corrected.jpg`;
 }
 
+type OcrState = "idle" | "recognizing" | "success" | "error";
+
 export default function ImageCard({ image, index }: ImageCardProps) {
   const { removeImage } = useImageStore();
   const [showOriginal, setShowOriginal] = useState(false);
   const [isCropEditorOpen, setIsCropEditorOpen] = useState(false);
+  const [ocrState, setOcrState] = useState<OcrState>("idle");
+  const [ocrText, setOcrText] = useState("");
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [copyConfirmed, setCopyConfirmed] = useState(false);
   const {
     attributes,
     listeners,
@@ -41,7 +48,33 @@ export default function ImageCard({ image, index }: ImageCardProps) {
   const hasCorrected = image.status === "corrected" && !!image.correctedUrl;
   const hasFailed = image.status === "failed";
   const canManualCrop = image.status === "corrected" || image.status === "failed";
+  // 依需求：若尚未校正，也允許直接對原圖辨識文字，只要不是還在自動校正處理中即可
+  const canRecognizeText = image.status !== "processing";
   const displayUrl = hasCorrected && !showOriginal ? image.correctedUrl! : image.originalUrl;
+
+  async function handleRecognizeText() {
+    setOcrState("recognizing");
+    setOcrError(null);
+    const targetUrl = image.correctedUrl ?? image.originalUrl;
+    const outcome = await recognizeText(targetUrl);
+    if (outcome.status === "success") {
+      setOcrText(outcome.text ?? "");
+      setOcrState("success");
+    } else {
+      setOcrError(outcome.message ?? "辨識失敗，請重新嘗試。");
+      setOcrState("error");
+    }
+  }
+
+  async function handleCopyText() {
+    try {
+      await navigator.clipboard.writeText(ocrText);
+      setCopyConfirmed(true);
+      setTimeout(() => setCopyConfirmed(false), 2000);
+    } catch {
+      setOcrError("複製失敗，請手動選取文字複製。");
+    }
+  }
 
   return (
     <div
@@ -121,6 +154,49 @@ export default function ImageCard({ image, index }: ImageCardProps) {
           ✕
         </button>
       </div>
+
+      {canRecognizeText && (
+        <div className="border-t border-border px-3 pt-2">
+          <button
+            type="button"
+            onClick={handleRecognizeText}
+            disabled={ocrState === "recognizing"}
+            className="flex w-full items-center justify-center gap-2 rounded-control border border-border px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {ocrState === "recognizing" && (
+              <span
+                className="h-3 w-3 animate-spin rounded-full border-2 border-ink-faint/40 border-t-ink-muted"
+                aria-hidden
+              />
+            )}
+            {ocrState === "recognizing" ? "辨識中…" : "辨識文字"}
+          </button>
+
+          {ocrState === "error" && (
+            <p className="mt-1.5 text-xs text-danger">{ocrError}</p>
+          )}
+
+          {ocrState === "success" && (
+            <div className="mt-2 space-y-1.5 pb-1">
+              <p className="text-center text-xs text-ink-faint">──── 辨識結果 ────</p>
+              <textarea
+                value={ocrText}
+                onChange={(e) => setOcrText(e.target.value)}
+                rows={5}
+                className="w-full resize-y rounded-control border border-border p-2 text-xs text-ink focus:border-accent focus:outline-none"
+              />
+              {ocrError && <p className="text-xs text-danger">{ocrError}</p>}
+              <button
+                type="button"
+                onClick={handleCopyText}
+                className="w-full rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
+              >
+                {copyConfirmed ? "已複製" : "複製文字"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {(hasCorrected || canManualCrop) && (
         <div className="flex gap-2 border-t border-border px-3 pb-3 pt-2">
