@@ -33,7 +33,11 @@
  *    取分數最高的當作最終結果
  * 6. sum/diff 排序法決定四個角的左上/右上/左下/右下
  * 7. 座標縮放回原始解析度，getPerspectiveTransform + warpPerspective 校正
- * 8. 幾何啟發式自動旋轉（寬 > 高則轉為直式）
+ * 8. 直接輸出校正結果，保留文件原始方向（不強制轉成直式）：warpPerspective
+ *    的輸出寬高就是依四個角點算出來的實際比例，寬 > 高就是橫式（例如身分證、
+ *    健保卡、名片這類橫式證件／卡片），高 > 寬就是直式（例如 A4 文件、收據），
+ *    不會為了配合 A4 的直式版面而把橫式文件硬轉成直式——這類卡片被強制轉向
+ *    反而會讓上面的文字方向不對、OCR 幾乎無法辨識
  *
  * 任何一步找不到合理結果都不會拋錯，只會回傳 not-detected，
  * 呼叫端會 fallback 使用原圖，畫面不會中斷。
@@ -459,21 +463,6 @@ function scoreCandidate(
   return { candidate, corners, score };
 }
 
-function autoRotateToPortrait(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  if (canvas.width <= canvas.height) return canvas;
-
-  const rotated = document.createElement("canvas");
-  rotated.width = canvas.height;
-  rotated.height = canvas.width;
-  const ctx = rotated.getContext("2d");
-  if (!ctx) return canvas;
-
-  ctx.translate(rotated.width / 2, rotated.height / 2);
-  ctx.rotate(Math.PI / 2);
-  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-  return rotated;
-}
-
 function warpPerspective(
   cv: CvNamespace,
   src: CvMat,
@@ -581,9 +570,8 @@ export async function correctDocument(imageUrl: string): Promise<ScanResult> {
     }
 
     const canvas = warpPerspective(cv, src, cornersInFullRes, width, height);
-    const rotated = autoRotateToPortrait(canvas);
 
-    return { kind: "corrected", canvas: rotated, corners: cornersInFullRes };
+    return { kind: "corrected", canvas, corners: cornersInFullRes };
   } catch (error) {
     console.error("[documentScanner] 校正失敗", error);
     return { kind: "error", message: NOT_DETECTED_MESSAGE };

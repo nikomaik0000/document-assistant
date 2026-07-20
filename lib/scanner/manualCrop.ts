@@ -7,10 +7,13 @@
  * - 只做「給定四個角點座標，重新做一次透視校正」這件事，跟自動偵測（找輪廓、
  *   評分、挑最佳候選）完全無關，使用者是手動決定角點，不需要再跑一次偵測
  *
- * warpPerspective／自動旋轉的邏輯跟 documentScanner.ts 內部的版本相同（同樣的
+ * warpPerspective 的邏輯跟 documentScanner.ts 內部的版本相同（同樣的
  * getPerspectiveTransform 數學），這裡刻意重新寫一份小函式而不是從
  * documentScanner.ts 匯出共用，同樣是為了這次「不修改該檔案」的要求；
  * 兩份邏輯都很短，之後如果要合併成共用工具函式也很容易。
+ *
+ * 輸出保留文件原始方向（不會強制轉成直式）：寬 > 高就是橫式結果
+ * （例如身分證、健保卡、名片這類橫式證件／卡片），高 > 寬就是直式。
  */
 import { getOpenCv } from "./opencvLoader";
 import type { Corners } from "./types";
@@ -50,19 +53,6 @@ function computeOutputSize(corners: Corners): { width: number; height: number } 
     width: Math.round(Math.max(topWidth, bottomWidth)),
     height: Math.round(Math.max(leftHeight, rightHeight)),
   };
-}
-
-function autoRotateToPortrait(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  if (canvas.width <= canvas.height) return canvas;
-  const rotated = document.createElement("canvas");
-  rotated.width = canvas.height;
-  rotated.height = canvas.width;
-  const ctx = rotated.getContext("2d");
-  if (!ctx) return canvas;
-  ctx.translate(rotated.width / 2, rotated.height / 2);
-  ctx.rotate(Math.PI / 2);
-  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-  return rotated;
 }
 
 /** 對任意來源 Mat（可以是原始解析度，也可以是縮小過的預覽用 Mat）做透視校正 */
@@ -153,8 +143,7 @@ export async function applyManualCrop(
     }
 
     const canvas = warpPerspectiveFromMat(cv, src, corners, width, height);
-    const rotated = autoRotateToPortrait(canvas);
-    const correctedUrl = await canvasToObjectUrl(rotated);
+    const correctedUrl = await canvasToObjectUrl(canvas);
 
     return { status: "corrected", correctedUrl, corners };
   } catch (error) {
