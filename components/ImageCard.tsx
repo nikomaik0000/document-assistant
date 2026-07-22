@@ -81,7 +81,7 @@ export default function ImageCard({ image, index }: ImageCardProps) {
       ref={setNodeRef}
       style={style}
       className={clsx(
-        "group relative flex flex-col overflow-hidden rounded-card border border-border bg-surface shadow-soft transition-shadow",
+        "group relative flex h-full flex-col overflow-hidden rounded-none border border-border bg-surface shadow-soft transition-shadow",
         isDragging && "z-10 opacity-90 shadow-softHover"
       )}
     >
@@ -99,12 +99,12 @@ export default function ImageCard({ image, index }: ImageCardProps) {
         {index + 1}
       </span>
 
-      <div className="relative aspect-[3/4] w-full bg-card">
+      <div className="relative h-72 w-full bg-card p-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- object URL 縮圖，不適用 next/image 最佳化 */}
         <img
           src={displayUrl}
           alt={image.fileName}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
         />
 
         {image.status === "processing" && (
@@ -135,7 +135,7 @@ export default function ImageCard({ image, index }: ImageCardProps) {
         )}
       </div>
 
-      <div className="flex items-start justify-between gap-2 p-3">
+      <div className="flex items-start justify-between gap-2 border-t border-border px-3 py-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-ink" title={image.fileName}>
             {image.fileName}
@@ -155,13 +155,13 @@ export default function ImageCard({ image, index }: ImageCardProps) {
         </button>
       </div>
 
-      {canRecognizeText && (
-        <div className="border-t border-border px-3 pt-2">
+      <div className="grid grid-cols-2 gap-2 border-t border-border p-3">
+        {canRecognizeText ? (
           <button
             type="button"
             onClick={handleRecognizeText}
             disabled={ocrState === "recognizing"}
-            className="flex w-full items-center justify-center gap-2 rounded-control border border-border px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-none bg-card px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-60"
           >
             {ocrState === "recognizing" && (
               <span
@@ -171,57 +171,69 @@ export default function ImageCard({ image, index }: ImageCardProps) {
             )}
             {ocrState === "recognizing" ? "辨識中…" : "辨識文字"}
           </button>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="min-h-11 w-full rounded-none bg-card px-3 py-2 text-sm font-medium text-ink-faint opacity-60"
+          >
+            辨識文字
+          </button>
+        )}
 
-          {ocrState === "error" && (
-            <p className="mt-1.5 text-xs text-danger">{ocrError}</p>
-          )}
+        <button
+          type="button"
+          onClick={() => setIsCropEditorOpen(true)}
+          disabled={!canManualCrop}
+          className="min-h-11 w-full rounded-none bg-card px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:text-ink-faint disabled:opacity-60"
+        >
+          裁切範圍
+        </button>
+      </div>
 
-          {ocrState === "success" && (
-            <div className="mt-2 space-y-1.5 pb-1">
-              <p className="text-center text-xs text-ink-faint">──── 辨識結果 ────</p>
-              <textarea
-                value={ocrText}
-                onChange={(e) => setOcrText(e.target.value)}
-                rows={5}
-                className="w-full resize-y rounded-control border border-border p-2 text-xs text-ink focus:border-accent focus:outline-none"
-              />
-              {ocrError && <p className="text-xs text-danger">{ocrError}</p>}
-              <button
-                type="button"
-                onClick={handleCopyText}
-                className="w-full rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
-              >
-                {copyConfirmed ? "已複製" : "複製文字"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="border-t border-border p-3">
+        <textarea
+          value={
+            ocrState === "success"
+              ? ocrText
+              : ocrState === "recognizing"
+                ? "辨識中，請稍候..."
+                : ""
+          }
+          onChange={(e) => setOcrText(e.target.value)}
+          readOnly={ocrState !== "success"}
+          placeholder="辨識後的文字會顯示在這裡"
+          className="h-32 w-full resize-none overflow-y-auto rounded-none border border-border bg-white p-3 text-sm leading-relaxed text-ink focus:border-accent focus:outline-none"
+        />
+        {ocrState === "error" && (
+          <p className="mt-2 text-xs text-danger">{ocrError}</p>
+        )}
+        {ocrError && ocrState === "success" && (
+          <p className="mt-2 text-xs text-danger">{ocrError}</p>
+        )}
+      </div>
 
-      {(hasCorrected || canManualCrop) && (
-        <div className="flex gap-2 border-t border-border px-3 pb-3 pt-2">
-          {hasCorrected && (
-            <button
-              type="button"
-              onClick={() =>
-                triggerUrlDownload(image.correctedUrl!, jpgFileName(image.fileName))
-              }
-              className="flex-1 rounded-control bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-white"
-            >
-              下載 JPG
-            </button>
-          )}
-          {canManualCrop && (
-            <button
-              type="button"
-              onClick={() => setIsCropEditorOpen(true)}
-              className="flex-1 rounded-control border border-border px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent"
-            >
-              調整裁切範圍
-            </button>
-          )}
-        </div>
-      )}
+      <div className="mt-auto space-y-2 border-t border-border p-3">
+        <button
+          type="button"
+          onClick={handleCopyText}
+          disabled={ocrState !== "success" || !ocrText.trim()}
+          className="min-h-11 w-full rounded-none bg-card px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:text-ink-faint disabled:opacity-60"
+        >
+          {copyConfirmed ? "已複製" : "複製文字"}
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            hasCorrected &&
+            triggerUrlDownload(image.correctedUrl!, jpgFileName(image.fileName))
+          }
+          disabled={!hasCorrected}
+          className="min-h-11 w-full rounded-none bg-card px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:text-ink-faint disabled:opacity-60"
+        >
+          下載 JPG
+        </button>
+      </div>
 
       {isCropEditorOpen && (
         <CropEditorModal image={image} onClose={() => setIsCropEditorOpen(false)} />

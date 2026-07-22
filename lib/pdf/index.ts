@@ -2,7 +2,7 @@
  * lib/pdf 對外的唯一入口，React 端只應該 import 這支檔案。
  */
 export { exportImagesToA4Pdf } from "./pdfExport";
-export type { PdfSourceImage } from "./types";
+export type { PdfLayoutOptions, PdfPageStamp, PdfPageStamps, PdfSourceImage } from "./types";
 
 function pad2(n: number): string {
   return n.toString().padStart(2, "0");

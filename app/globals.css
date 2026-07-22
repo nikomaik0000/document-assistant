@@ -16,6 +16,10 @@ body {
   outline-offset: 2px;
 }
 
+.font-serif-zh {
+  font-family: "Songti TC", "Noto Serif TC", "PMingLiU", "MingLiU", serif;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

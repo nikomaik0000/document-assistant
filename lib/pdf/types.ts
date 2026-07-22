@@ -14,3 +14,30 @@ export interface PageCellRect {
   width: number;
   height: number;
 }
+
+export type PdfOrientation = "portrait" | "landscape";
+
+export interface PdfPageStamp {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  rotation: number;
+  scale: number;
+  opacity: number;
+  fontSize: number;
+  color: string;
+  bold: boolean;
+  zIndex: number;
+}
+
+export interface PdfLayoutOptions {
+  imagesPerPage: number;
+  rows: number;
+  columns: number;
+  marginPt: number;
+  gapPt: number;
+  orientation: PdfOrientation;
+}
+
+export type PdfPageStamps = Record<number, PdfPageStamp[]>;

@@ -1,12 +1,52 @@
 import { PDFDocument } from "pdf-lib";
-import { A4_WIDTH_PT, A4_HEIGHT_PT, computeCellRects, decideImagesPerPage, fitContain } from "./layout";
-import type { PdfSourceImage } from "./types";
+import {
+  A4_HEIGHT_PT,
+  A4_WIDTH_PT,
+  computeCellRects,
+  computeLayoutCellRects,
+  decideImagesPerPage,
+  fitContain,
+  getPageSize,
+} from "./layout";
+import type { PdfLayoutOptions, PdfPageStamp, PdfPageStamps, PdfSourceImage } from "./types";
 
 /**
  * 把圖片網址（object URL）重新畫到 canvas 再輸出成 JPEG bytes。
  * 這樣不管原始檔案是 PNG／WEBP 或別的格式，最後都統一成 pdf-lib
  * 可以直接嵌入的 JPEG，不用另外處理各種來源格式的相容性問題。
  */
+function hexToCanvasColor(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "#1F1E1C";
+}
+
+function drawPageTextStamp(
+  ctx: CanvasRenderingContext2D,
+  stamp: PdfPageStamp,
+  pageWidth: number,
+  pageHeight: number,
+  pixelScale: number
+) {
+  const lines = stamp.text.split(/\r?\n/);
+  const fontSize =
+    Math.max(8, stamp.fontSize) * Math.max(0.2, stamp.scale) * pixelScale;
+  const lineHeight = fontSize * 1.25;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, Math.max(0, stamp.opacity));
+  ctx.translate(stamp.x * pageWidth * pixelScale, stamp.y * pageHeight * pixelScale);
+  ctx.rotate((stamp.rotation * Math.PI) / 180);
+  ctx.font = `${stamp.bold ? "700" : "400"} ${fontSize}px sans-serif`;
+  ctx.fillStyle = hexToCanvasColor(stamp.color);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const firstY = -((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => {
+    ctx.fillText(line, 0, firstY + index * lineHeight);
+  });
+  ctx.restore();
+}
+
 async function loadAsJpegBytes(
   url: string
 ): Promise<{ bytes: Uint8Array; width: number; height: number }> {
@@ -39,6 +79,35 @@ async function loadAsJpegBytes(
   };
 }
 
+async function createPageStampOverlay(
+  stamps: PdfPageStamp[],
+  pageWidth: number,
+  pageHeight: number
+): Promise<Uint8Array | null> {
+  if (stamps.length === 0) return null;
+
+  const pixelScale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(pageWidth * pixelScale);
+  canvas.height = Math.round(pageHeight * pixelScale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("無法建立畫布以輸出文字印章");
+
+  stamps
+    .slice()
+    .sort((a, b) => a.zIndex - b.zIndex)
+    .forEach((stamp) => drawPageTextStamp(ctx, stamp, pageWidth, pageHeight, pixelScale));
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("文字印章輸出失敗"))),
+      "image/png"
+    );
+  });
+
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
 /**
  * 將多張圖片依序輸出成一份 A4 PDF：
  * - 保持每張圖片的長寬比，不裁切、不變形
@@ -48,18 +117,26 @@ async function loadAsJpegBytes(
  * 圖片依傳入陣列的順序排列（呼叫端負責決定順序，通常對應畫面上的排序）。
  */
 export async function exportImagesToA4Pdf(
-  images: PdfSourceImage[]
+  images: PdfSourceImage[],
+  layoutOptions?: PdfLayoutOptions,
+  pageStamps: PdfPageStamps = {}
 ): Promise<Blob> {
   if (images.length === 0) {
     throw new Error("沒有可輸出的圖片");
   }
 
   const pdfDoc = await PDFDocument.create();
-  const perPage = decideImagesPerPage(images.length);
-  const cells = computeCellRects(perPage);
+  const perPage = layoutOptions?.imagesPerPage ?? decideImagesPerPage(images.length);
+  const cells = layoutOptions
+    ? computeLayoutCellRects(layoutOptions)
+    : computeCellRects(perPage);
+  const pageSize = layoutOptions
+    ? getPageSize(layoutOptions)
+    : ([A4_WIDTH_PT, A4_HEIGHT_PT] as [number, number]);
 
   for (let i = 0; i < images.length; i += perPage) {
-    const page = pdfDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+    const page = pdfDoc.addPage(pageSize);
+    const pageIndex = Math.floor(i / perPage);
     const pageImages = images.slice(i, i + perPage);
 
     for (let slot = 0; slot < pageImages.length; slot++) {
@@ -69,6 +146,16 @@ export async function exportImagesToA4Pdf(
       const jpg = await pdfDoc.embedJpg(bytes);
       const rect = fitContain(cell, width, height);
       page.drawImage(jpg, rect);
+    }
+
+    const overlayBytes = await createPageStampOverlay(
+      pageStamps[pageIndex] ?? [],
+      pageSize[0],
+      pageSize[1]
+    );
+    if (overlayBytes) {
+      const overlay = await pdfDoc.embedPng(overlayBytes);
+      page.drawImage(overlay, { x: 0, y: 0, width: pageSize[0], height: pageSize[1] });
     }
   }
 

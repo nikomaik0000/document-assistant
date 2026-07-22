@@ -1,11 +1,11 @@
-import type { PageCellRect } from "./types";
+import type { PageCellRect, PdfLayoutOptions } from "./types";
 
 /** A4，單位為 pt（72 pt = 1 inch），與 pdf-lib 的座標系一致 */
 export const A4_WIDTH_PT = 595.28;
 export const A4_HEIGHT_PT = 841.89;
 
-const MARGIN_PT = 36; // 0.5 inch 四周留白
-const GAP_PT = 16; // 同一頁多張圖片之間的間距
+export const DEFAULT_MARGIN_PT = 36; // 0.5 inch 四周留白
+export const DEFAULT_GAP_PT = 16; // 同一頁多張圖片之間的間距
 
 /**
  * 依照圖片總數決定每頁放幾張：
@@ -25,17 +25,40 @@ export function decideImagesPerPage(totalImageCount: number): number {
  * 格數固定：最後一頁圖片不足時，剩餘的格子留白（呼叫端只需不畫圖即可）。
  */
 export function computeCellRects(imagesPerPage: number): PageCellRect[] {
-  const contentWidth = A4_WIDTH_PT - MARGIN_PT * 2;
-  const contentHeight = A4_HEIGHT_PT - MARGIN_PT * 2;
+  return computeLayoutCellRects({
+    imagesPerPage,
+    rows: imagesPerPage,
+    columns: 1,
+    marginPt: DEFAULT_MARGIN_PT,
+    gapPt: DEFAULT_GAP_PT,
+    orientation: "portrait",
+  });
+}
+
+export function getPageSize(options: PdfLayoutOptions): [number, number] {
+  return options.orientation === "landscape"
+    ? [A4_HEIGHT_PT, A4_WIDTH_PT]
+    : [A4_WIDTH_PT, A4_HEIGHT_PT];
+}
+
+export function computeLayoutCellRects(options: PdfLayoutOptions): PageCellRect[] {
+  const [pageWidth, pageHeight] = getPageSize(options);
+  const contentWidth = pageWidth - options.marginPt * 2;
+  const contentHeight = pageHeight - options.marginPt * 2;
+  const cellWidth =
+    (contentWidth - options.gapPt * (options.columns - 1)) / options.columns;
   const cellHeight =
-    (contentHeight - GAP_PT * (imagesPerPage - 1)) / imagesPerPage;
+    (contentHeight - options.gapPt * (options.rows - 1)) / options.rows;
 
   const cells: PageCellRect[] = [];
-  for (let i = 0; i < imagesPerPage; i++) {
-    // i = 0 是頁面最上面那一格；由上往下排時，離底部的距離要遞減
+  for (let i = 0; i < options.imagesPerPage; i++) {
+    const row = Math.floor(i / options.columns);
+    const column = i % options.columns;
+    const x = options.marginPt + column * (cellWidth + options.gapPt);
     const yFromBottom =
-      MARGIN_PT + (imagesPerPage - 1 - i) * (cellHeight + GAP_PT);
-    cells.push({ x: MARGIN_PT, yFromBottom, width: contentWidth, height: cellHeight });
+      options.marginPt +
+      (options.rows - 1 - row) * (cellHeight + options.gapPt);
+    cells.push({ x, yFromBottom, width: cellWidth, height: cellHeight });
   }
   return cells;
 }

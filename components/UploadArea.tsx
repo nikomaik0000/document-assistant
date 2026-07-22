@@ -9,9 +9,10 @@ import { useImageStore } from "@/hooks/useImageStore";
 interface UploadAreaProps {
   /** 精簡模式：已有圖片列表時顯示為較小的附加上傳列，而非置中大區塊 */
   compact?: boolean;
+  toolbar?: boolean;
 }
 
-export default function UploadArea({ compact = false }: UploadAreaProps) {
+export default function UploadArea({ compact = false, toolbar = false }: UploadAreaProps) {
   const { addImages } = useImageStore();
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +70,30 @@ export default function UploadArea({ compact = false }: UploadAreaProps) {
     multiple: true,
   });
 
+  if (toolbar) {
+    return (
+      <div className="min-w-0 flex-1 space-y-1">
+        <div
+          {...getRootProps()}
+          className={clsx(
+            "flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-control border border-dashed px-3 text-center text-sm transition-colors sm:text-base",
+            "font-serif-zh tracking-[0.18em]",
+            isDragActive
+              ? "border-accent bg-white text-accent"
+              : "border-border-strong bg-white/60 text-ink hover:border-ink-faint"
+          )}
+        >
+          <input {...getInputProps()} />
+          <span aria-hidden>＋</span>
+          <span className="truncate">
+            {isDragActive ? "放開即可上傳" : "拖曳圖片到這裡，或點擊選擇檔案"}
+          </span>
+        </div>
+        {error && <p className="px-1 text-xs text-danger">{error}</p>}
+      </div>
+    );
+  }
+
   if (compact) {
     return (
       <div className="space-y-2">
@@ -83,7 +108,7 @@ export default function UploadArea({ compact = false }: UploadAreaProps) {
         >
           <input {...getInputProps()} />
           <span aria-hidden>＋</span>
-          <span>拖曳更多圖片到這裡，或點擊選擇檔案</span>
+          <span>拖曳圖片到這裡，或點擊選擇檔案</span>
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
       </div>
@@ -102,9 +127,7 @@ export default function UploadArea({ compact = false }: UploadAreaProps) {
         )}
       >
         <input {...getInputProps()} />
-        <div className="text-4xl" aria-hidden>
-          📄
-        </div>
+        <DocumentIcon />
         <div className="space-y-1">
           <p className="text-lg font-medium text-ink">Document Assistant</p>
           <p className="text-sm text-ink-muted">
@@ -113,17 +136,42 @@ export default function UploadArea({ compact = false }: UploadAreaProps) {
         </div>
         <div className="flex items-center gap-3 text-sm text-ink-faint">
           <span className="h-px w-8 bg-border" />
-          <span>or</span>
+          <span>或</span>
           <span className="h-px w-8 bg-border" />
         </div>
         <button
           type="button"
           className="rounded-control bg-accent px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
         >
-          Choose Files
+          選擇檔案
         </button>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg
+      className="h-12 w-12 text-ink-faint"
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M14 6h14l8 8v28H14V6Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M28 6v9h8M19 24h14M19 30h14M19 36h9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
