@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useImageStore } from "@/hooks/useImageStore";
 import {
   layoutPresets,
@@ -47,6 +47,29 @@ function clamp01(value: number): number {
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
+}
+
+function countStepDecimals(step: number): number {
+  const stepText = String(step);
+  if (!stepText.includes(".")) return 0;
+  return stepText.split(".")[1]?.length ?? 0;
+}
+
+function formatNumberValue(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return String(Number(value.toFixed(2)));
+}
+
+function stepNumberValue(
+  value: number,
+  direction: -1 | 1,
+  min: number,
+  max: number,
+  step: number
+): number {
+  const decimals = countStepDecimals(step);
+  const nextValue = value + direction * step;
+  return clampNumber(Number(nextValue.toFixed(decimals)), min, max);
 }
 
 function SortablePreviewImage({ image }: { image: DocumentImage }) {
@@ -87,6 +110,7 @@ function SortablePreviewImage({ image }: { image: DocumentImage }) {
 export default function LayoutEditor({ onClose }: LayoutEditorProps) {
   const { images, reorderImages } = useImageStore();
   const [stampDraft, setStampDraft] = useState(stampPresets[0]?.text ?? "");
+  const suppressNextPageClickRef = useRef(false);
   const {
     selectedPresetId,
     setSelectedPresetId,
@@ -151,32 +175,51 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
     event: React.PointerEvent<HTMLButtonElement>,
     stampId: string
   ) {
-    event.preventDefault();
     event.stopPropagation();
     setSelectedPageIndex(currentPageIndex);
     setSelectedStampId(stampId);
+    suppressNextPageClickRef.current = true;
 
     const pageElement = event.currentTarget.closest<HTMLElement>("[data-a4-page]");
     if (!pageElement) return;
     const pointerArea: HTMLElement = pageElement;
     pointerArea.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let didMove = false;
 
     function handlePointerMove(moveEvent: PointerEvent) {
       const rect = pointerArea.getBoundingClientRect();
+      const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+      didMove ||= distance > 4;
       updatePageStamp(currentPageIndex, stampId, {
         x: clamp01((moveEvent.clientX - rect.left) / rect.width),
         y: clamp01((moveEvent.clientY - rect.top) / rect.height),
       });
     }
 
+    function handlePointerUp() {
+      setSelectedPageIndex(currentPageIndex);
+      setSelectedStampId(stampId);
+      pointerArea.removeEventListener("pointermove", handlePointerMove);
+      pointerArea.removeEventListener("pointerup", handlePointerUp);
+      pointerArea.removeEventListener("pointercancel", cleanup);
+      window.setTimeout(() => {
+        suppressNextPageClickRef.current = false;
+      }, didMove ? 80 : 0);
+    }
+
     function cleanup() {
       pointerArea.removeEventListener("pointermove", handlePointerMove);
-      pointerArea.removeEventListener("pointerup", cleanup);
+      pointerArea.removeEventListener("pointerup", handlePointerUp);
       pointerArea.removeEventListener("pointercancel", cleanup);
+      window.setTimeout(() => {
+        suppressNextPageClickRef.current = false;
+      }, 0);
     }
 
     pointerArea.addEventListener("pointermove", handlePointerMove);
-    pointerArea.addEventListener("pointerup", cleanup);
+    pointerArea.addEventListener("pointerup", handlePointerUp);
     pointerArea.addEventListener("pointercancel", cleanup);
   }
 
@@ -187,39 +230,38 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
   if (images.length === 0) return null;
 
   return (
-    <section className="rounded-card border border-border bg-surface p-4 shadow-soft">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-ink">編輯輸出版面</h2>
-          <p className="text-sm text-ink-muted">
-            調整版面與文字印章，預覽會完整顯示目前 A4 頁面。
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="min-h-10 shrink-0 rounded-control border border-border px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent"
-        >
-          關閉
-        </button>
-      </div>
+    <section className="relative rounded-card border border-border bg-surface p-4 pt-8 shadow-soft">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="關閉版面編輯器"
+        className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-card text-ink-faint transition-colors hover:bg-border hover:text-ink"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+          <path
+            d="M7 7l10 10M17 7 7 17"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
 
-      <div className="grid gap-5 lg:grid-cols-[270px_minmax(360px,1fr)_300px]">
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-ink-muted">版面設定</h3>
+      <div className="grid gap-5 lg:grid-cols-[minmax(240px,300px)_minmax(360px,1fr)_minmax(240px,300px)] xl:grid-cols-[320px_minmax(420px,1fr)_320px]">
+        <div className="order-2 space-y-4 lg:order-1">
+          <PanelTitle>版面編輯器</PanelTitle>
           <label className="block space-y-1.5 text-sm font-medium text-ink">
             <span>每頁版面</span>
-            <select
+            <SelectControl
               value={selectedPresetId}
               onChange={(event) => setSelectedPresetId(event.target.value)}
-              className="min-h-11 w-full rounded-control border border-border bg-white px-3 py-2 text-sm text-ink"
             >
               {layoutPresets.map((preset) => (
                 <option key={preset.id} value={preset.id}>
                   {preset.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
 
           {selectedPresetId === "custom" && (
@@ -270,7 +312,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
           </div>
         </div>
 
-        <div className="min-w-0">
+        <div className="order-1 min-w-0 lg:order-2">
           <PageNavigation
             currentPage={currentPageIndex}
             totalPages={pages.length}
@@ -285,7 +327,13 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
               <div className="flex h-[min(70vh,760px)] min-h-[420px] items-center justify-center overflow-hidden bg-card/40 p-3">
                 <div
                   data-a4-page
-                  onClick={() => setSelectedStampId(null)}
+                  onClick={() => {
+                    if (suppressNextPageClickRef.current) {
+                      suppressNextPageClickRef.current = false;
+                      return;
+                    }
+                    setSelectedStampId(null);
+                  }}
                   className="relative grid bg-white shadow-soft [container-type:size]"
                   style={{
                     aspectRatio: `${pageSize.width} / ${pageSize.height}`,
@@ -331,21 +379,20 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
           </DndContext>
         </div>
 
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-ink-muted">文字印章</h3>
+        <div className="order-3 space-y-3 lg:order-3">
+          <PanelTitle>文字印章</PanelTitle>
           <label className="block space-y-1.5 text-sm font-medium text-ink">
             <span>常用文字印章</span>
-            <select
+            <SelectControl
               value={stampDraft}
               onChange={(event) => setStampDraft(event.target.value)}
-              className="min-h-11 w-full rounded-control border border-border bg-white px-3 py-2 text-sm text-ink"
             >
               {stampPresets.map((preset) => (
                 <option key={preset.id} value={preset.text}>
                   {preset.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
 
           <label className="block space-y-1.5 text-sm font-medium text-ink">
@@ -433,6 +480,52 @@ function PageNavigation({
   );
 }
 
+function PanelTitle({ children }: { children: string }) {
+  return (
+    <div className="border-b border-border pb-3">
+      <h3 className="font-serif-zh text-lg font-medium tracking-[0.08em] text-ink sm:text-xl">
+        {children}
+      </h3>
+    </div>
+  );
+}
+
+function SelectControl({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={onChange}
+        className="min-h-11 w-full appearance-none rounded-control border border-border bg-white py-2 pl-4 pr-12 text-sm text-ink"
+      >
+        {children}
+      </select>
+      <svg
+        viewBox="0 0 24 24"
+        className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M7 10l5 5 5-5"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
 function PageButton({
   label,
   disabled,
@@ -499,7 +592,7 @@ function PageStampButton({
       onPointerDown={onPointerDown}
       className={clsx(
         "absolute whitespace-pre border px-1 text-center leading-[1.25]",
-        selected ? "border-accent bg-white/30" : "border-transparent"
+        selected ? "border-accent/60 bg-white/20 shadow-soft" : "border-transparent"
       )}
       style={{
         left: `${stamp.x * 100}%`,
@@ -546,7 +639,7 @@ function StampEditor({
         />
       </label>
 
-      <div className="grid grid-cols-2 gap-2 rounded-card bg-card p-3">
+      <div className="grid grid-cols-1 gap-x-3 gap-y-2 rounded-card bg-card p-2.5 sm:grid-cols-2">
         <CompactNumberField
           label="旋轉"
           value={stamp.rotation}
@@ -564,7 +657,7 @@ function StampEditor({
           onChange={(value) => onUpdate({ scale: value })}
         />
         <CompactNumberField
-          label="透明度"
+          label="透明"
           value={Math.round(stamp.opacity * 100)}
           min={0}
           max={100}
@@ -572,7 +665,7 @@ function StampEditor({
           onChange={(value) => onUpdate({ opacity: clampNumber(value, 0, 100) / 100 })}
         />
         <CompactNumberField
-          label="字型大小"
+          label="大小"
           value={stamp.fontSize}
           min={8}
           max={96}
@@ -581,39 +674,54 @@ function StampEditor({
         />
       </div>
 
-      <div className="grid grid-cols-2 items-center gap-3 rounded-card bg-card p-3">
-        <label className="flex items-center justify-between gap-2 text-sm font-medium text-ink">
-          <span>文字顏色</span>
+      <div className="flex min-h-11 items-center justify-center gap-4 rounded-card bg-card px-3 py-2 text-sm font-medium text-ink">
+        <label className="flex items-center gap-2">
+          <span className="whitespace-nowrap">文字顏色</span>
           <input
             type="color"
             value={stamp.color}
             onChange={(event) => onUpdate({ color: event.target.value })}
-            className="h-9 w-12 rounded-control border border-border bg-white"
+            className="stamp-color-input h-7 w-7 cursor-pointer rounded-md border border-border bg-transparent"
           />
         </label>
-        <label className="flex min-h-9 items-center justify-between gap-2 text-sm font-medium text-ink">
-          <span>粗體</span>
+        <div className="h-6 w-px bg-border" aria-hidden="true" />
+        <label className="flex cursor-pointer items-center gap-2">
+          <span className="whitespace-nowrap">粗體</span>
           <input
             type="checkbox"
             checked={stamp.bold}
             onChange={(event) => onUpdate({ bold: event.target.checked })}
-            className="h-5 w-5"
+            className="peer sr-only"
           />
+          <span
+            aria-hidden="true"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-white text-transparent peer-checked:text-ink-muted"
+          >
+            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
+              <path
+                d="M5 12.5l4 4L19 6.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
         </label>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={onMoveForward} className="min-h-10 rounded-control border border-border px-3 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-accent">
+      <div className="grid grid-cols-4 gap-1.5">
+        <button type="button" onClick={onMoveForward} className="min-h-10 rounded-control border border-border px-2 py-2 text-sm font-medium text-ink-muted hover:text-accent">
           上層
         </button>
-        <button type="button" onClick={onMoveBackward} className="min-h-10 rounded-control border border-border px-3 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-accent">
+        <button type="button" onClick={onMoveBackward} className="min-h-10 rounded-control border border-border px-2 py-2 text-sm font-medium text-ink-muted hover:text-accent">
           下層
         </button>
-        <button type="button" onClick={onCopy} className="min-h-10 rounded-control bg-accent-soft px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent hover:text-white">
-          複製印章
+        <button type="button" onClick={onCopy} className="min-h-10 rounded-control bg-accent-soft px-2 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-soft">
+          複製
         </button>
-        <button type="button" onClick={onRemove} className="min-h-10 rounded-control border border-danger/30 px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger hover:text-white">
-          刪除印章
+        <button type="button" onClick={onRemove} className="min-h-10 rounded-control border border-danger/30 px-2 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/5">
+          刪除
         </button>
       </div>
     </div>
@@ -635,19 +743,23 @@ function NumberField({
   step: number;
   onChange: (value: number) => void;
 }) {
+  const inputId = useId();
+
   return (
-    <label className="block space-y-1.5 text-sm font-medium text-ink">
-      <span>{label}</span>
-      <input
-        type="number"
+    <div className="block space-y-1.5 text-sm font-medium text-ink">
+      <label htmlFor={inputId}>{label}</label>
+      <NumberStepper
+        id={inputId}
+        ariaLabel={label}
         value={value}
         min={min}
         max={max}
         step={step}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="min-h-11 w-full rounded-control border border-border bg-white px-3 py-2 text-sm text-ink"
+        onChange={onChange}
+        inputClassName="min-h-11 px-3 py-2 pr-10 text-left text-sm"
+        buttonClassName="right-4"
       />
-    </label>
+    </div>
   );
 }
 
@@ -666,18 +778,101 @@ function CompactNumberField({
   step: number;
   onChange: (value: number) => void;
 }) {
+  const inputId = useId();
+
   return (
-    <label className="block space-y-1 text-xs font-medium text-ink-muted">
-      <span>{label}</span>
-      <input
-        type="number"
+    <div className="grid min-h-9 grid-cols-[40px_minmax(0,1fr)] items-center gap-1 text-xs font-medium text-ink-muted">
+      <label
+        htmlFor={inputId}
+        className="flex h-full items-center justify-center px-1 text-center"
+      >
+        {label}
+      </label>
+      <NumberStepper
+        id={inputId}
+        ariaLabel={label}
         value={value}
         min={min}
         max={max}
         step={step}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="min-h-10 w-full rounded-control border border-border bg-white px-2 py-1 text-center text-sm text-ink"
+        onChange={onChange}
+        inputClassName="min-h-9 px-2 py-1 pr-10 text-center text-sm"
+        buttonClassName="right-4"
       />
-    </label>
+    </div>
+  );
+}
+
+function NumberStepper({
+  id,
+  ariaLabel,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  inputClassName,
+  buttonClassName,
+}: {
+  id: string;
+  ariaLabel: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  inputClassName: string;
+  buttonClassName: string;
+}) {
+  function handleStep(direction: -1 | 1) {
+    onChange(stepNumberValue(value, direction, min, max, step));
+  }
+
+  return (
+    <span className="relative block min-w-0">
+      <input
+        id={id}
+        type="number"
+        aria-label={ariaLabel}
+        value={formatNumberValue(value)}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => onChange(clampNumber(Number(event.target.value), min, max))}
+        className={clsx(
+          "number-input-native w-full rounded-control border border-border bg-white text-ink shadow-none",
+          inputClassName
+        )}
+      />
+      <span
+        className={clsx(
+          "absolute top-1/2 flex w-4 -translate-y-1/2 flex-col items-center justify-center overflow-hidden text-ink-muted",
+          buttonClassName
+        )}
+      >
+        <button
+          type="button"
+          aria-label="增加數值"
+          onClick={() => handleStep(1)}
+          disabled={value >= max}
+          className="flex h-3.5 w-4 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <svg viewBox="0 0 12 8" className="h-2 w-2.5" aria-hidden="true">
+            <path d="M6 1 1.5 6.5h9L6 1Z" fill="currentColor" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          aria-label="減少數值"
+          onClick={() => handleStep(-1)}
+          disabled={value <= min}
+          className="flex h-3.5 w-4 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <svg viewBox="0 0 12 8" className="h-2 w-2.5" aria-hidden="true">
+            <path d="M6 7 1.5 1.5h9L6 7Z" fill="currentColor" />
+          </svg>
+        </button>
+      </span>
+    </span>
   );
 }

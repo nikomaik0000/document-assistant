@@ -203,7 +203,7 @@ export default function ImageCard({ image, index }: ImageCardProps) {
           onChange={(e) => setOcrText(e.target.value)}
           readOnly={ocrState !== "success"}
           placeholder="辨識後的文字會顯示在這裡"
-          className="h-32 w-full resize-none overflow-y-auto rounded-none border border-border bg-white p-3 text-sm leading-relaxed text-ink focus:border-accent focus:outline-none"
+          className="h-32 w-full resize-none overflow-y-auto rounded-none border border-border bg-white p-3 text-sm leading-relaxed text-ink"
         />
         {ocrState === "error" && (
           <p className="mt-2 text-xs text-danger">{ocrError}</p>

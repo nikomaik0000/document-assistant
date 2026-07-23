@@ -11,9 +11,44 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-:focus-visible {
-  outline: 2px solid theme("colors.accent.DEFAULT");
-  outline-offset: 2px;
+:where(input, textarea, select, button, [role="button"], [tabindex]):focus,
+:where(input, textarea, select, button, [role="button"], [tabindex]):focus-visible,
+:where(input, textarea, select, button, [role="button"], [tabindex]):active {
+  outline: none;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+.number-input-native {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.number-input-native::-webkit-inner-spin-button,
+.number-input-native::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.stamp-color-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0;
+  background: transparent;
+}
+
+.stamp-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.stamp-color-input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 7px;
+}
+
+.stamp-color-input::-moz-color-swatch {
+  border: 0;
+  border-radius: 7px;
 }
 
 .font-serif-zh {
