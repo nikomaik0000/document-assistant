@@ -675,9 +675,9 @@ function StampEditor({
   return (
     <div className="space-y-6">
       <div>
-        <div className="rounded-card bg-card px-3 py-5">
-          <div className="mx-auto grid w-full max-w-[280px] grid-cols-2 grid-rows-2 gap-x-4 gap-y-4">
-            <CompactNumberField
+        <div className="space-y-4 rounded-card bg-card p-5">
+          <div className="space-y-3">
+            <SettingRow
               label="旋轉"
               value={stamp.rotation}
               min={-180}
@@ -685,7 +685,7 @@ function StampEditor({
               step={1}
               onChange={(value) => onUpdate({ rotation: value })}
             />
-            <CompactNumberField
+            <SettingRow
               label="縮放"
               value={stamp.scale}
               min={0.2}
@@ -693,7 +693,7 @@ function StampEditor({
               step={0.1}
               onChange={(value) => onUpdate({ scale: value })}
             />
-            <CompactNumberField
+            <SettingRow
               label="透明"
               value={Math.round(stamp.opacity * 100)}
               min={0}
@@ -701,7 +701,7 @@ function StampEditor({
               step={1}
               onChange={(value) => onUpdate({ opacity: clampNumber(value, 0, 100) / 100 })}
             />
-            <CompactNumberField
+            <SettingRow
               label="大小"
               value={stamp.fontSize}
               min={8}
@@ -711,8 +711,8 @@ function StampEditor({
             />
           </div>
 
-          <div className="mx-auto mt-6 grid h-12 w-full max-w-[280px] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-center gap-x-4 text-sm font-medium text-ink">
-            <label className="flex min-w-0 items-center justify-center gap-2">
+          <div className="flex min-h-9 items-center gap-7 pt-1 text-sm font-medium text-ink">
+            <label className="flex min-w-0 items-center gap-2">
               <span className="whitespace-nowrap">文字顏色</span>
               <input
                 type="color"
@@ -721,8 +721,7 @@ function StampEditor({
                 className="stamp-color-input h-6 w-6 cursor-pointer rounded-none border border-border bg-transparent"
               />
             </label>
-            <div className="h-6 w-px bg-border" aria-hidden="true" />
-            <label className="flex min-w-0 cursor-pointer items-center justify-center gap-2">
+            <label className="flex min-w-0 cursor-pointer items-center gap-2">
               <span className="whitespace-nowrap">粗體</span>
               <input
                 type="checkbox"
@@ -831,7 +830,7 @@ function NumberField({
   );
 }
 
-function CompactNumberField({
+function SettingRow({
   label,
   value,
   min,
@@ -849,18 +848,9 @@ function CompactNumberField({
   const inputId = useId();
 
   return (
-    <div className="grid h-12 min-w-0 grid-cols-[36px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-ink-muted">
-      <label
-        htmlFor={inputId}
-        className="flex h-12 w-9 shrink-0 items-center justify-center text-center leading-[1.35]"
-      >
-        <span className="flex flex-col items-center justify-center leading-[1.35]">
-          {label.split("").map((character) => (
-            <span key={character} className="block">
-              {character}
-            </span>
-          ))}
-        </span>
+    <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-3 text-sm font-medium text-ink-muted">
+      <label htmlFor={inputId} className="whitespace-nowrap">
+        {label}
       </label>
       <NumberStepper
         id={inputId}
@@ -870,8 +860,8 @@ function CompactNumberField({
         max={max}
         step={step}
         onChange={onChange}
-        inputClassName="h-12 min-w-0 px-3 pr-8 text-left text-sm"
-        buttonClassName="right-2"
+        inputClassName="h-[42px] box-border min-w-0 rounded-[12px] pl-4 pr-[38px] text-left text-sm"
+        buttonClassName="right-3"
       />
     </div>
   );
@@ -903,7 +893,7 @@ function NumberStepper({
   }
 
   return (
-    <span className="relative block h-12 min-w-0">
+    <span className="relative block min-w-0">
       <input
         id={id}
         type="number"
