@@ -76,11 +76,11 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
         <div
           {...getRootProps()}
           className={clsx(
-            "flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-control border border-dashed px-3 text-center text-sm transition-colors sm:text-base",
-            "font-serif-zh tracking-[0.18em]",
+            "flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-control border border-border px-3 text-center text-sm transition-colors sm:text-base",
+            "font-serif-zh tracking-[0.12em]",
             isDragActive
-              ? "border-accent bg-white text-accent"
-              : "border-border-strong bg-white/60 text-ink hover:border-ink-faint"
+              ? "bg-accent-soft text-ink"
+              : "bg-white/70 text-ink hover:bg-white"
           )}
         >
           <input {...getInputProps()} />
@@ -100,10 +100,10 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
         <div
           {...getRootProps()}
           className={clsx(
-            "flex cursor-pointer items-center justify-center gap-2 rounded-control border border-dashed px-4 py-3 text-sm transition-colors",
+            "flex cursor-pointer items-center justify-center gap-2 rounded-control border border-border px-4 py-3 text-sm transition-colors",
             isDragActive
-              ? "border-accent bg-accent-soft text-accent"
-              : "border-border-strong bg-surface text-ink-muted hover:border-ink-faint"
+              ? "bg-accent-soft text-ink"
+              : "bg-surface text-ink hover:bg-accent-soft"
           )}
         >
           <input {...getInputProps()} />
@@ -116,14 +116,14 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
   }
 
   return (
-    <div className="space-y-3">
+    <div className="w-full max-w-6xl space-y-3">
       <div
         {...getRootProps()}
         className={clsx(
-          "flex min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-card border-2 border-dashed px-8 py-16 text-center transition-all",
+          "flex min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-panel border border-border px-8 py-14 text-center transition-colors",
           isDragActive
-            ? "border-accent bg-accent-soft"
-            : "border-border-strong bg-surface hover:border-ink-faint hover:shadow-soft"
+            ? "bg-accent-soft"
+            : "bg-surface hover:bg-white"
         )}
       >
         <input {...getInputProps()} />
@@ -141,7 +141,7 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
         </div>
         <button
           type="button"
-          className="rounded-control bg-accent px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className="rounded-control bg-accent-soft px-5 py-2.5 text-sm font-medium text-ink transition-opacity hover:opacity-80"
         >
           選擇檔案
         </button>
@@ -154,7 +154,9 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
 function DocumentIcon() {
   return (
     <svg
-      className="h-12 w-12 text-ink-faint"
+      width="48"
+      height="48"
+      className="h-12 w-12 shrink-0 text-ink-faint"
       viewBox="0 0 48 48"
       fill="none"
       aria-hidden="true"

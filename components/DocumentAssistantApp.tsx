@@ -49,7 +49,7 @@ function DocumentAssistantContent() {
             <button
               type="button"
               onClick={() => setIsLayoutEditorOpen((open) => !open)}
-              className="font-serif-zh min-h-12 shrink-0 rounded-control bg-white px-3 text-sm tracking-[0.12em] text-ink shadow-soft transition-opacity hover:opacity-90 sm:px-6 sm:text-base sm:tracking-[0.18em]"
+              className="font-serif-zh min-h-12 shrink-0 rounded-control bg-white px-3 text-sm tracking-[0.12em] text-ink shadow-soft transition-opacity hover:opacity-90 sm:px-6 sm:text-base"
             >
               編輯輸出版面
             </button>
@@ -60,7 +60,7 @@ function DocumentAssistantContent() {
               type="button"
               onClick={handleExportPdf}
               disabled={isProcessing || isExporting}
-              className="font-serif-zh min-h-12 shrink-0 rounded-control bg-white px-3 text-sm tracking-[0.2em] text-ink shadow-soft transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:px-6 sm:text-base sm:tracking-[0.28em]"
+              className="font-serif-zh min-h-12 shrink-0 rounded-control bg-white px-3 text-sm tracking-[0.12em] text-ink shadow-soft transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:px-6 sm:text-base"
             >
               {isExporting ? "輸出中" : "輸出 PDF"}
             </button>
@@ -73,8 +73,8 @@ function DocumentAssistantContent() {
         </header>
       )}
 
-      <main className={`mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-10 sm:px-8 ${hasImages ? "pt-40 md:pt-28" : "pt-10"}`}>
-        <div className="flex flex-1 flex-col gap-8">
+      <main className={`mx-auto flex min-h-screen max-w-7xl flex-col px-4 sm:px-8 ${hasImages ? "pb-10 pt-40 md:pt-28" : "pb-6 pt-8"}`}>
+        <div className={hasImages ? "flex flex-1 flex-col gap-8" : "flex flex-1 items-center justify-center"}>
         {!hasImages ? (
           <UploadArea />
         ) : (
@@ -88,7 +88,7 @@ function DocumentAssistantContent() {
         )}
         </div>
 
-        <footer className="pt-10">
+        <footer className={hasImages ? "pt-10" : "pt-6"}>
           <PrivacyNotice />
         </footer>
       </main>

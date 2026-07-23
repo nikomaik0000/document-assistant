@@ -2,9 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-text: #666666;
+  --color-border: #e2e2e2;
+  --color-control-bg: #edebe6;
+  --color-surface: #ffffff;
+  --color-page-bg: #faf9f6;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
 html,
 body {
   height: 100%;
+}
+
+body {
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+  line-height: 1.6;
 }
 
 * {
@@ -43,16 +69,37 @@ body {
 
 .stamp-color-input::-webkit-color-swatch {
   border: 0;
-  border-radius: 7px;
+  border-radius: 0;
 }
 
 .stamp-color-input::-moz-color-swatch {
   border: 0;
-  border-radius: 7px;
+  border-radius: 0;
 }
 
 .font-serif-zh {
   font-family: "Songti TC", "Noto Serif TC", "PMingLiU", "MingLiU", serif;
+  line-height: 1.35;
+}
+
+input,
+select,
+button {
+  line-height: 1.4;
+}
+
+textarea {
+  line-height: 1.7;
+}
+
+input,
+textarea,
+select {
+  letter-spacing: 0;
+}
+
+button {
+  letter-spacing: 0.04em;
 }
 
 @media (prefers-reduced-motion: reduce) {

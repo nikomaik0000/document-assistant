@@ -5,21 +5,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Apple / Notion 風格：米白背景、淡灰卡片，無鮮豔色彩
+        // Shared design tokens
         canvas: "#FAF9F6",
         surface: "#FFFFFF",
-        card: "#F4F3F0",
+        card: "#EDEBE6",
         border: {
-          DEFAULT: "#E7E5E0",
-          strong: "#D8D5CE",
+          DEFAULT: "#E2E2E2",
+          strong: "#E2E2E2",
         },
         ink: {
-          DEFAULT: "#1F1E1C",
-          muted: "#6B6862",
-          faint: "#9B9890",
+          DEFAULT: "#666666",
+          muted: "#666666",
+          faint: "#8A8A8A",
         },
         accent: {
-          DEFAULT: "#3D3B37", // 中性深灰，作為主要互動色，避免鮮豔色彩
+          DEFAULT: "#666666",
           soft: "#EDEBE6",
         },
         danger: "#B3554A",
@@ -36,12 +36,14 @@ const config: Config = {
         ],
       },
       borderRadius: {
-        card: "16px",
-        control: "10px",
+        sm: "10px",
+        control: "14px",
+        card: "18px",
+        panel: "20px",
       },
       boxShadow: {
-        soft: "0 1px 2px rgba(31, 30, 28, 0.04), 0 8px 24px -8px rgba(31, 30, 28, 0.08)",
-        softHover: "0 2px 4px rgba(31, 30, 28, 0.06), 0 12px 32px -8px rgba(31, 30, 28, 0.12)",
+        soft: "0 1px 2px rgba(102, 102, 102, 0.04), 0 8px 24px -8px rgba(102, 102, 102, 0.08)",
+        softHover: "0 2px 4px rgba(102, 102, 102, 0.06), 0 12px 32px -8px rgba(102, 102, 102, 0.12)",
       },
     },
   },

@@ -151,6 +151,10 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
   const selectedStamp =
     pageStamps[currentPageIndex]?.find((stamp) => stamp.id === selectedStampId) ??
     null;
+  const stampTextValue = selectedStamp?.text ?? stampDraft;
+  const presetSelectValue = stampPresets.some((preset) => preset.text === stampTextValue)
+    ? stampTextValue
+    : "";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -224,18 +228,37 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
   }
 
   function handleAddStamp() {
-    addPageStamp(currentPageIndex, stampDraft);
+    const createdStampId = addPageStamp(currentPageIndex, stampTextValue);
+    if (createdStampId) {
+      setStampDraft(stampTextValue);
+    }
+  }
+
+  function handlePresetChange(event: React.ChangeEvent<HTMLSelectElement>) {
+    const nextText = event.target.value;
+    setStampDraft(nextText);
+    if (selectedStamp) {
+      updatePageStamp(currentPageIndex, selectedStamp.id, { text: nextText });
+    }
+  }
+
+  function handleStampTextChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    const nextText = event.target.value;
+    setStampDraft(nextText);
+    if (selectedStamp) {
+      updatePageStamp(currentPageIndex, selectedStamp.id, { text: nextText });
+    }
   }
 
   if (images.length === 0) return null;
 
   return (
-    <section className="relative rounded-card border border-border bg-surface p-4 pt-8 shadow-soft">
+    <section className="relative rounded-panel border border-border bg-surface p-5 pt-6 shadow-soft">
       <button
         type="button"
         onClick={onClose}
         aria-label="關閉版面編輯器"
-        className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-card text-ink-faint transition-colors hover:bg-border hover:text-ink"
+        className="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-card text-ink-faint transition-colors hover:bg-border hover:text-ink"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
           <path
@@ -247,10 +270,10 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
         </svg>
       </button>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(240px,300px)_minmax(360px,1fr)_minmax(240px,300px)] xl:grid-cols-[320px_minmax(420px,1fr)_320px]">
-        <div className="order-2 space-y-4 lg:order-1">
+      <div className="grid gap-5 lg:grid-cols-[minmax(236px,300px)_minmax(360px,1fr)_minmax(236px,300px)] xl:grid-cols-[320px_minmax(420px,1fr)_320px]">
+        <div className="order-2 space-y-5 px-1 py-5 sm:px-3 lg:order-1 lg:px-6">
           <PanelTitle>版面編輯器</PanelTitle>
-          <label className="block space-y-1.5 text-sm font-medium text-ink">
+          <label className="block space-y-2 text-sm font-medium text-ink">
             <span>每頁版面</span>
             <SelectControl
               value={selectedPresetId}
@@ -293,7 +316,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
               type="button"
               onClick={() => setOrientation("portrait")}
               className={clsx(
-                "min-h-11 rounded-md px-3 py-2 text-sm font-medium",
+                "h-12 rounded-control px-3 text-sm font-medium",
                 orientation === "portrait" ? "bg-white text-ink shadow-soft" : "text-ink-muted"
               )}
             >
@@ -303,7 +326,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
               type="button"
               onClick={() => setOrientation("landscape")}
               className={clsx(
-                "min-h-11 rounded-md px-3 py-2 text-sm font-medium",
+                "h-12 rounded-control px-3 text-sm font-medium",
                 orientation === "landscape" ? "bg-white text-ink shadow-soft" : "text-ink-muted"
               )}
             >
@@ -312,7 +335,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
           </div>
         </div>
 
-        <div className="order-1 min-w-0 lg:order-2">
+        <div className="order-1 min-w-0 py-4 lg:order-2">
           <PageNavigation
             currentPage={currentPageIndex}
             totalPages={pages.length}
@@ -379,39 +402,43 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
           </DndContext>
         </div>
 
-        <div className="order-3 space-y-3 lg:order-3">
+        <div className="order-3 space-y-6 px-1 py-5 sm:px-3 lg:order-3 lg:px-6">
           <PanelTitle>文字印章</PanelTitle>
-          <label className="block space-y-1.5 text-sm font-medium text-ink">
-            <span>常用文字印章</span>
-            <SelectControl
-              value={stampDraft}
-              onChange={(event) => setStampDraft(event.target.value)}
-            >
-              {stampPresets.map((preset) => (
-                <option key={preset.id} value={preset.text}>
-                  {preset.label}
+          <div>
+            <div className="grid grid-cols-[minmax(0,1fr)_64px] gap-3">
+              <SelectControl
+                value={presetSelectValue}
+                onChange={handlePresetChange}
+                controlClassName="pl-5 pr-10"
+                iconClassName="right-4 h-4 w-4"
+              >
+                <option value="" disabled>
+                  選擇常用印章
                 </option>
-              ))}
-            </SelectControl>
-          </label>
+                {stampPresets.map((preset) => (
+                  <option key={preset.id} value={preset.text}>
+                    {preset.label}
+                  </option>
+                ))}
+              </SelectControl>
+              <button
+                type="button"
+                onClick={handleAddStamp}
+                className="h-12 rounded-control bg-accent-soft px-3 text-sm font-medium text-ink transition-opacity hover:opacity-80"
+              >
+                新增
+              </button>
+            </div>
+          </div>
 
-          <label className="block space-y-1.5 text-sm font-medium text-ink">
-            <span>文字內容</span>
+          <label className="block">
             <textarea
-              value={stampDraft}
-              onChange={(event) => setStampDraft(event.target.value)}
+              value={stampTextValue}
+              onChange={handleStampTextChange}
               rows={3}
-              className="w-full resize-y rounded-control border border-border bg-white px-3 py-2 text-sm text-ink"
+              className="max-h-[112px] min-h-[92px] w-full resize-y rounded-control border border-border bg-white px-5 py-4 text-sm font-medium leading-relaxed text-ink"
             />
           </label>
-
-          <button
-            type="button"
-            onClick={handleAddStamp}
-            className="min-h-11 w-full rounded-control bg-accent-soft px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent hover:text-white"
-          >
-            新增文字印章
-          </button>
 
           {selectedStamp && (
             <StampEditor
@@ -483,10 +510,18 @@ function PageNavigation({
 function PanelTitle({ children }: { children: string }) {
   return (
     <div className="border-b border-border pb-3">
-      <h3 className="font-serif-zh text-lg font-medium tracking-[0.08em] text-ink sm:text-xl">
+      <h3 className="font-serif-zh text-base font-normal tracking-[0.08em] text-ink sm:text-lg">
         {children}
       </h3>
     </div>
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <span className="block text-sm font-medium tracking-[0.04em] text-ink">
+      {children}
+    </span>
   );
 }
 
@@ -494,23 +529,33 @@ function SelectControl({
   value,
   onChange,
   children,
+  controlClassName,
+  iconClassName,
 }: {
   value: string;
   onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
   children: React.ReactNode;
+  controlClassName?: string;
+  iconClassName?: string;
 }) {
   return (
     <div className="relative">
       <select
         value={value}
         onChange={onChange}
-        className="min-h-11 w-full appearance-none rounded-control border border-border bg-white py-2 pl-4 pr-12 text-sm text-ink"
+        className={clsx(
+          "h-12 w-full appearance-none rounded-control border border-border bg-white py-0 pl-4 pr-12 text-sm text-ink",
+          controlClassName
+        )}
       >
         {children}
       </select>
       <svg
         viewBox="0 0 24 24"
-        className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted"
+        className={clsx(
+          "pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#dbdbdb]",
+          iconClassName
+        )}
         fill="none"
         aria-hidden="true"
       >
@@ -546,7 +591,7 @@ function PageButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-10 w-10 items-center justify-center rounded-control text-ink transition-colors hover:bg-card disabled:cursor-not-allowed disabled:text-ink-faint"
+      className="flex h-10 w-10 items-center justify-center rounded-control text-[#dbdbdb] transition-colors hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
         {hasBar && (
@@ -628,101 +673,124 @@ function StampEditor({
   onMoveBackward: () => void;
 }) {
   return (
-    <div className="space-y-3 border-t border-border pt-4">
-      <label className="block space-y-1.5 text-sm font-medium text-ink">
-        <span>編輯印章文字</span>
-        <textarea
-          value={stamp.text}
-          onChange={(event) => onUpdate({ text: event.target.value })}
-          rows={2}
-          className="w-full resize-y rounded-control border border-border bg-white px-3 py-2 text-sm text-ink"
-        />
-      </label>
+    <div className="space-y-6">
+      <div>
+        <div className="rounded-card bg-card px-3 py-5">
+          <div className="mx-auto grid w-full max-w-[280px] grid-cols-2 grid-rows-2 gap-x-4 gap-y-4">
+            <CompactNumberField
+              label="旋轉"
+              value={stamp.rotation}
+              min={-180}
+              max={180}
+              step={1}
+              onChange={(value) => onUpdate({ rotation: value })}
+            />
+            <CompactNumberField
+              label="縮放"
+              value={stamp.scale}
+              min={0.2}
+              max={4}
+              step={0.1}
+              onChange={(value) => onUpdate({ scale: value })}
+            />
+            <CompactNumberField
+              label="透明"
+              value={Math.round(stamp.opacity * 100)}
+              min={0}
+              max={100}
+              step={1}
+              onChange={(value) => onUpdate({ opacity: clampNumber(value, 0, 100) / 100 })}
+            />
+            <CompactNumberField
+              label="大小"
+              value={stamp.fontSize}
+              min={8}
+              max={96}
+              step={1}
+              onChange={(value) => onUpdate({ fontSize: value })}
+            />
+          </div>
 
-      <div className="grid grid-cols-1 gap-x-3 gap-y-2 rounded-card bg-card p-2.5 sm:grid-cols-2">
-        <CompactNumberField
-          label="旋轉"
-          value={stamp.rotation}
-          min={-180}
-          max={180}
-          step={1}
-          onChange={(value) => onUpdate({ rotation: value })}
-        />
-        <CompactNumberField
-          label="縮放"
-          value={stamp.scale}
-          min={0.2}
-          max={4}
-          step={0.1}
-          onChange={(value) => onUpdate({ scale: value })}
-        />
-        <CompactNumberField
-          label="透明"
-          value={Math.round(stamp.opacity * 100)}
-          min={0}
-          max={100}
-          step={1}
-          onChange={(value) => onUpdate({ opacity: clampNumber(value, 0, 100) / 100 })}
-        />
-        <CompactNumberField
-          label="大小"
-          value={stamp.fontSize}
-          min={8}
-          max={96}
-          step={1}
-          onChange={(value) => onUpdate({ fontSize: value })}
-        />
+          <div className="mx-auto mt-6 grid h-12 w-full max-w-[280px] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-center gap-x-4 text-sm font-medium text-ink">
+            <label className="flex min-w-0 items-center justify-center gap-2">
+              <span className="whitespace-nowrap">文字顏色</span>
+              <input
+                type="color"
+                value={stamp.color}
+                onChange={(event) => onUpdate({ color: event.target.value })}
+                className="stamp-color-input h-6 w-6 cursor-pointer rounded-none border border-border bg-transparent"
+              />
+            </label>
+            <div className="h-6 w-px bg-border" aria-hidden="true" />
+            <label className="flex min-w-0 cursor-pointer items-center justify-center gap-2">
+              <span className="whitespace-nowrap">粗體</span>
+              <input
+                type="checkbox"
+                checked={stamp.bold}
+                onChange={(event) => onUpdate({ bold: event.target.checked })}
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 items-center justify-center rounded-none border border-ink bg-white text-transparent peer-checked:text-ink-muted"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                  <path
+                    d="M5 12.5l4 4L19 6.5"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </label>
+          </div>
+        </div>
       </div>
 
-      <div className="flex min-h-11 items-center justify-center gap-4 rounded-card bg-card px-3 py-2 text-sm font-medium text-ink">
-        <label className="flex items-center gap-2">
-          <span className="whitespace-nowrap">文字顏色</span>
-          <input
-            type="color"
-            value={stamp.color}
-            onChange={(event) => onUpdate({ color: event.target.value })}
-            className="stamp-color-input h-7 w-7 cursor-pointer rounded-md border border-border bg-transparent"
-          />
-        </label>
-        <div className="h-6 w-px bg-border" aria-hidden="true" />
-        <label className="flex cursor-pointer items-center gap-2">
-          <span className="whitespace-nowrap">粗體</span>
-          <input
-            type="checkbox"
-            checked={stamp.bold}
-            onChange={(event) => onUpdate({ bold: event.target.checked })}
-            className="peer sr-only"
-          />
-          <span
-            aria-hidden="true"
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-white text-transparent peer-checked:text-ink-muted"
+      <div className="space-y-3">
+        <SectionLabel>操作</SectionLabel>
+        <div className="grid grid-cols-4 gap-3">
+          <button
+            type="button"
+            onClick={onMoveForward}
+            aria-label="上層"
+            className="flex h-12 items-center justify-center rounded-control bg-accent-soft text-ink transition-opacity hover:opacity-80"
           >
-            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
               <path
-                d="M5 12.5l4 4L19 6.5"
+                d="M5 15 12 8l7 7"
                 stroke="currentColor"
-                strokeWidth="2"
+                strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </svg>
-          </span>
-        </label>
-      </div>
-
-      <div className="grid grid-cols-4 gap-1.5">
-        <button type="button" onClick={onMoveForward} className="min-h-10 rounded-control border border-border px-2 py-2 text-sm font-medium text-ink-muted hover:text-accent">
-          上層
-        </button>
-        <button type="button" onClick={onMoveBackward} className="min-h-10 rounded-control border border-border px-2 py-2 text-sm font-medium text-ink-muted hover:text-accent">
-          下層
-        </button>
-        <button type="button" onClick={onCopy} className="min-h-10 rounded-control bg-accent-soft px-2 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-soft">
-          複製
-        </button>
-        <button type="button" onClick={onRemove} className="min-h-10 rounded-control border border-danger/30 px-2 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/5">
-          刪除
-        </button>
+          </button>
+          <button
+            type="button"
+            onClick={onMoveBackward}
+            aria-label="下層"
+            className="flex h-12 items-center justify-center rounded-control bg-accent-soft text-ink transition-opacity hover:opacity-80"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+              <path
+                d="m5 9 7 7 7-7"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button type="button" onClick={onCopy} className="h-12 rounded-control bg-accent-soft px-2 text-sm font-medium text-accent transition-opacity hover:opacity-80">
+            複製
+          </button>
+          <button type="button" onClick={onRemove} className="h-12 rounded-control border border-danger/30 bg-white px-2 text-sm font-medium text-danger transition-colors hover:bg-danger/5">
+            刪除
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -756,7 +824,7 @@ function NumberField({
         max={max}
         step={step}
         onChange={onChange}
-        inputClassName="min-h-11 px-3 py-2 pr-10 text-left text-sm"
+        inputClassName="h-12 px-3 pr-10 text-left text-sm"
         buttonClassName="right-4"
       />
     </div>
@@ -781,12 +849,18 @@ function CompactNumberField({
   const inputId = useId();
 
   return (
-    <div className="grid min-h-9 grid-cols-[40px_minmax(0,1fr)] items-center gap-1 text-xs font-medium text-ink-muted">
+    <div className="grid h-12 min-w-0 grid-cols-[36px_minmax(0,1fr)] items-center gap-2 text-sm font-medium text-ink-muted">
       <label
         htmlFor={inputId}
-        className="flex h-full items-center justify-center px-1 text-center"
+        className="flex h-12 w-9 shrink-0 items-center justify-center text-center leading-[1.35]"
       >
-        {label}
+        <span className="flex flex-col items-center justify-center leading-[1.35]">
+          {label.split("").map((character) => (
+            <span key={character} className="block">
+              {character}
+            </span>
+          ))}
+        </span>
       </label>
       <NumberStepper
         id={inputId}
@@ -796,8 +870,8 @@ function CompactNumberField({
         max={max}
         step={step}
         onChange={onChange}
-        inputClassName="min-h-9 px-2 py-1 pr-10 text-center text-sm"
-        buttonClassName="right-4"
+        inputClassName="h-12 min-w-0 px-3 pr-8 text-left text-sm"
+        buttonClassName="right-2"
       />
     </div>
   );
@@ -829,7 +903,7 @@ function NumberStepper({
   }
 
   return (
-    <span className="relative block min-w-0">
+    <span className="relative block h-12 min-w-0">
       <input
         id={id}
         type="number"
@@ -846,7 +920,7 @@ function NumberStepper({
       />
       <span
         className={clsx(
-          "absolute top-1/2 flex w-4 -translate-y-1/2 flex-col items-center justify-center overflow-hidden text-ink-muted",
+          "absolute top-1/2 flex w-6 -translate-y-1/2 flex-col items-center justify-center overflow-hidden text-[#dbdbdb]",
           buttonClassName
         )}
       >
@@ -855,7 +929,7 @@ function NumberStepper({
           aria-label="增加數值"
           onClick={() => handleStep(1)}
           disabled={value >= max}
-          className="flex h-3.5 w-4 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-3.5 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
         >
           <svg viewBox="0 0 12 8" className="h-2 w-2.5" aria-hidden="true">
             <path d="M6 1 1.5 6.5h9L6 1Z" fill="currentColor" />
@@ -866,7 +940,7 @@ function NumberStepper({
           aria-label="減少數值"
           onClick={() => handleStep(-1)}
           disabled={value <= min}
-          className="flex h-3.5 w-4 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-3.5 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-30"
         >
           <svg viewBox="0 0 12 8" className="h-2 w-2.5" aria-hidden="true">
             <path d="M6 7 1.5 1.5h9L6 7Z" fill="currentColor" />
