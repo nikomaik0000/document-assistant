@@ -1,4 +1,5 @@
 import { ACCEPTED_IMAGE_TYPES, DocumentImage } from "@/types/image";
+import { DEFAULT_IMAGE_ADJUSTMENTS } from "./imageAdjustments";
 
 /**
  * 產生穩定且唯一的圖片 id。
@@ -43,6 +44,7 @@ export async function createDocumentImage(file: File): Promise<DocumentImage> {
       height,
       sizeBytes: file.size,
       status: "ready",
+      imageAdjustments: DEFAULT_IMAGE_ADJUSTMENTS,
       createdAt: Date.now(),
     };
   } catch (error) {

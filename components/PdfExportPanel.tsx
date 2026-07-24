@@ -33,7 +33,7 @@ export default function PdfExportPanel() {
   if (images.length === 0) return null;
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
+    <div className="flex flex-col items-end gap-2">
       <button
         type="button"
         onClick={handleExport}

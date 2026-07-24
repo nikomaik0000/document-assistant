@@ -8,7 +8,7 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import { DocumentImage, ImageCorners, ImageStatus } from "@/types/image";
+import { DocumentImage, ImageAdjustments, ImageCorners, ImageStatus } from "@/types/image";
 import { revokeDocumentImageUrls } from "@/lib/image";
 
 interface ImageStoreState {
@@ -20,6 +20,7 @@ interface UpdateProcessingResultPayload {
   status: ImageStatus;
   correctedUrl?: string;
   corners?: ImageCorners;
+  imageAdjustments?: ImageAdjustments;
   statusMessage?: string;
 }
 
@@ -58,13 +59,13 @@ function imageStoreReducer(
     }
 
     case "UPDATE_PROCESSING_RESULT": {
-      const { id, status, correctedUrl, corners, statusMessage } = action.payload;
+      const { id, status, correctedUrl, corners, imageAdjustments, statusMessage } = action.payload;
       return {
         images: state.images.map((img) => {
           if (img.id !== id) return img;
 
           // 若這張圖片先前已經有校正結果、這次又產生新的，釋放舊的 URL 避免記憶體洩漏
-          if (img.correctedUrl && img.correctedUrl !== correctedUrl) {
+          if (correctedUrl && img.correctedUrl && img.correctedUrl !== correctedUrl) {
             URL.revokeObjectURL(img.correctedUrl);
           }
 
@@ -73,6 +74,7 @@ function imageStoreReducer(
             status,
             correctedUrl: correctedUrl ?? img.correctedUrl,
             corners: corners ?? img.corners,
+            imageAdjustments: imageAdjustments ?? img.imageAdjustments,
             statusMessage,
           };
         }),

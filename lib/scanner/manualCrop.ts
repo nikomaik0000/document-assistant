@@ -148,7 +148,7 @@ export async function applyManualCrop(
     return { status: "corrected", correctedUrl, corners };
   } catch (error) {
     console.error("[manualCrop] 手動校正失敗", error);
-    return { status: "error", message: "重新校正時發生錯誤，請重新嘗試。" };
+    return { status: "error", message: "文件校正時發生錯誤，請重新嘗試。" };
   } finally {
     src?.delete();
   }

@@ -116,11 +116,11 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
   }
 
   return (
-    <div className="w-full max-w-6xl space-y-3">
+    <div className="w-full max-w-6xl space-y-4">
       <div
         {...getRootProps()}
         className={clsx(
-          "flex min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-panel border border-border px-8 py-14 text-center transition-colors",
+          "flex min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-panel border border-border p-8 text-center transition-colors",
           isDragActive
             ? "bg-accent-soft"
             : "bg-surface hover:bg-white"
@@ -128,7 +128,7 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
       >
         <input {...getInputProps()} />
         <DocumentIcon />
-        <div className="space-y-1">
+        <div className="space-y-2">
           <p className="text-lg font-medium text-ink">Document Assistant</p>
           <p className="text-sm text-ink-muted">
             {isDragActive ? "放開即可上傳" : "拖曳檔案到這裡"}
@@ -141,7 +141,7 @@ export default function UploadArea({ compact = false, toolbar = false }: UploadA
         </div>
         <button
           type="button"
-          className="rounded-control bg-accent-soft px-5 py-2.5 text-sm font-medium text-ink transition-opacity hover:opacity-80"
+          className="flex h-12 items-center justify-center rounded-control bg-accent-soft px-6 py-0 text-sm font-medium leading-none text-ink transition-opacity hover:opacity-80"
         >
           選擇檔案
         </button>

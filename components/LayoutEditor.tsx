@@ -84,14 +84,14 @@ function SortablePreviewImage({ image }: { image: DocumentImage }) {
         transition,
       }}
       className={clsx(
-        "relative min-h-0 overflow-hidden rounded-control border border-border bg-white",
+        "relative flex min-h-0 items-center justify-center overflow-hidden rounded-control bg-white",
         isDragging && "z-20 opacity-80 shadow-softHover"
       )}
     >
       <div
         {...attributes}
         {...listeners}
-        className="absolute left-1.5 top-1.5 z-10 flex h-8 min-w-8 cursor-grab items-center justify-center rounded-full bg-white/95 px-2 text-sm text-ink-muted shadow-soft active:cursor-grabbing"
+        className="absolute left-2 top-2 z-10 flex h-8 min-w-8 cursor-grab items-center justify-center rounded-full bg-white/95 px-2 text-sm text-ink-muted shadow-soft active:cursor-grabbing"
         aria-label="拖曳調整圖片順序"
         title="拖曳調整圖片順序"
       >
@@ -101,7 +101,7 @@ function SortablePreviewImage({ image }: { image: DocumentImage }) {
       <img
         src={getImageUrl(image)}
         alt={image.fileName}
-        className="h-full w-full object-contain"
+        className="image-preview-paper max-h-full max-w-full object-contain"
       />
     </div>
   );
@@ -253,12 +253,12 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
   if (images.length === 0) return null;
 
   return (
-    <section className="relative rounded-panel border border-border bg-surface p-5 pt-6 shadow-soft">
+    <section className="relative rounded-panel border border-border bg-surface p-6 shadow-soft">
       <button
         type="button"
         onClick={onClose}
         aria-label="關閉版面編輯器"
-        className="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-card text-ink-faint transition-colors hover:bg-border hover:text-ink"
+        className="absolute right-6 top-6 flex h-11 w-11 items-center justify-center rounded-full bg-card text-ink-faint transition-colors hover:bg-border hover:text-ink"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
           <path
@@ -270,8 +270,8 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
         </svg>
       </button>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(236px,300px)_minmax(360px,1fr)_minmax(236px,300px)] xl:grid-cols-[320px_minmax(420px,1fr)_320px]">
-        <div className="order-2 space-y-5 px-1 py-5 sm:px-3 lg:order-1 lg:px-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(236px,300px)_minmax(360px,1fr)_minmax(236px,300px)] xl:grid-cols-[320px_minmax(420px,1fr)_320px]">
+        <div className="order-2 flex flex-col gap-6 px-4 py-6 lg:order-1 lg:px-6">
           <PanelTitle>版面編輯器</PanelTitle>
           <label className="block space-y-2 text-sm font-medium text-ink">
             <span>每頁版面</span>
@@ -288,7 +288,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
           </label>
 
           {selectedPresetId === "custom" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <NumberField label="列數" value={customRows} min={1} max={6} step={1} onChange={setCustomRows} />
               <NumberField label="欄數" value={customColumns} min={1} max={4} step={1} onChange={setCustomColumns} />
             </div>
@@ -347,7 +347,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
               items={currentPageImages.map((image) => image.id)}
               strategy={rectSortingStrategy}
             >
-              <div className="flex h-[min(70vh,760px)] min-h-[420px] items-center justify-center overflow-hidden bg-card/40 p-3">
+              <div className="flex h-[min(70vh,760px)] min-h-[420px] items-center justify-center overflow-hidden bg-card/40 p-4">
                 <div
                   data-a4-page
                   onClick={() => {
@@ -402,14 +402,14 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
           </DndContext>
         </div>
 
-        <div className="order-3 space-y-6 px-1 py-5 sm:px-3 lg:order-3 lg:px-6">
+        <div className="order-3 flex flex-col gap-6 px-4 py-6 lg:order-3 lg:px-6">
           <PanelTitle>文字印章</PanelTitle>
           <div>
             <div className="grid grid-cols-[minmax(0,1fr)_64px] gap-3">
               <SelectControl
                 value={presetSelectValue}
                 onChange={handlePresetChange}
-                controlClassName="pl-5 pr-10"
+                controlClassName="pl-4 pr-10"
                 iconClassName="right-4 h-4 w-4"
               >
                 <option value="" disabled>
@@ -436,7 +436,7 @@ export default function LayoutEditor({ onClose }: LayoutEditorProps) {
               value={stampTextValue}
               onChange={handleStampTextChange}
               rows={3}
-              className="max-h-[112px] min-h-[92px] w-full resize-y rounded-control border border-border bg-white px-5 py-4 text-sm font-medium leading-relaxed text-ink"
+              className="max-h-[112px] min-h-[92px] w-full resize-y rounded-control border border-border bg-white p-4 text-sm font-medium leading-relaxed text-ink"
             />
           </label>
 
@@ -475,7 +475,7 @@ function PageNavigation({
   const isLast = currentPage === totalPages - 1;
 
   return (
-    <div className="mb-3 flex items-center justify-center gap-1">
+    <div className="mb-3 flex items-center justify-center gap-3">
       <PageButton
         label="第一頁"
         disabled={isFirst}
@@ -591,7 +591,7 @@ function PageButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-10 w-10 items-center justify-center rounded-control text-[#dbdbdb] transition-colors hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex h-9 w-9 items-center justify-center rounded-full text-[#aaaaaa] transition-colors hover:bg-[#f8f7f5] disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-35"
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
         {hasBar && (
@@ -675,7 +675,7 @@ function StampEditor({
   return (
     <div className="space-y-6">
       <div>
-        <div className="space-y-4 rounded-card bg-card p-5">
+        <div className="space-y-4 rounded-card bg-card p-6">
           <div className="space-y-3">
             <SettingRow
               label="旋轉"
@@ -711,7 +711,7 @@ function StampEditor({
             />
           </div>
 
-          <div className="flex min-h-9 items-center gap-7 pt-1 text-sm font-medium text-ink">
+          <div className="flex min-h-9 items-center gap-4 text-sm font-medium text-ink">
             <label className="flex min-w-0 items-center gap-2">
               <span className="whitespace-nowrap">文字顏色</span>
               <input
@@ -727,22 +727,8 @@ function StampEditor({
                 type="checkbox"
                 checked={stamp.bold}
                 onChange={(event) => onUpdate({ bold: event.target.checked })}
-                className="peer sr-only"
+                className="checkbox-control"
               />
-              <span
-                aria-hidden="true"
-                className="flex h-6 w-6 items-center justify-center rounded-none border border-ink bg-white text-transparent peer-checked:text-ink-muted"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
-                  <path
-                    d="M5 12.5l4 4L19 6.5"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
             </label>
           </div>
         </div>
@@ -813,7 +799,7 @@ function NumberField({
   const inputId = useId();
 
   return (
-    <div className="block space-y-1.5 text-sm font-medium text-ink">
+    <div className="block space-y-2 text-sm font-medium text-ink">
       <label htmlFor={inputId}>{label}</label>
       <NumberStepper
         id={inputId}
@@ -860,7 +846,7 @@ function SettingRow({
         max={max}
         step={step}
         onChange={onChange}
-        inputClassName="h-[42px] box-border min-w-0 rounded-[12px] pl-4 pr-[38px] text-left text-sm"
+        inputClassName="h-[42px] box-border min-w-0 rounded-[12px] pl-4 pr-10 text-left text-sm"
         buttonClassName="right-3"
       />
     </div>

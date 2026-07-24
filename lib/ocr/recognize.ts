@@ -48,7 +48,9 @@ function logFullError(step: string, error: unknown) {
  * 不會拋出例外：任何失敗都會回傳 status "error" + message，UI 端只要照顯示即可，
  * 不會讓整個 App crash。完整的原始錯誤一律印在 console.error，方便除錯。
  */
-export async function recognizeText(imageUrl: string): Promise<OcrOutcome> {
+export async function recognizeText(
+  imageUrl: string
+): Promise<OcrOutcome> {
   ocrLog("========== OCR 開始 ==========");
   ocrLog("Target image URL:", imageUrl);
 
@@ -58,21 +60,8 @@ export async function recognizeText(imageUrl: string): Promise<OcrOutcome> {
     return { status: "error", message: OCR_ERROR_MESSAGE };
   }
 
-  let worker;
   try {
-    worker = await getOcrWorker();
-  } catch (error) {
-    logFullError("Loading worker / loading language data / initializing", error);
-    return { status: "error", message: OCR_ERROR_MESSAGE };
-  }
-
-  if (!worker) {
-    logFullError("Loading worker", new Error("worker 為 undefined/null，但沒有拋出例外"));
-    return { status: "error", message: OCR_ERROR_MESSAGE };
-  }
-  ocrLog("✓ Worker 可用，準備開始辨識");
-
-  try {
+    const worker = await getOcrWorker();
     ocrLog("Recognizing image...");
     const result = await worker.recognize(imageUrl);
     ocrLog("✓ Recognition complete");
@@ -81,10 +70,9 @@ export async function recognizeText(imageUrl: string): Promise<OcrOutcome> {
     ocrLog("OCR Result length:", text.length, "characters");
     ocrLog("OCR Result preview:", text.slice(0, 200));
     ocrLog("========== OCR 結束（成功） ==========");
-
     return { status: "success", text };
   } catch (error) {
-    logFullError("recognize()", error);
+    logFullError("Loading worker / recognize()", error);
     ocrLog("========== OCR 結束（失敗） ==========");
     return { status: "error", message: OCR_ERROR_MESSAGE };
   }

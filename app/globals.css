@@ -17,9 +17,10 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
 }
 
 html,
@@ -75,6 +76,46 @@ body {
 .stamp-color-input::-moz-color-swatch {
   border: 0;
   border-radius: 0;
+}
+
+.checkbox-control {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--color-text);
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.checkbox-control::before {
+  content: "";
+  width: 7px;
+  height: 13px;
+  transform: translateY(-1px) rotate(45deg) scale(0);
+  transition: transform 120ms ease;
+  border-bottom: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+.checkbox-control:checked::before {
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+
+.checkbox-control:focus-visible {
+  box-shadow: 0 0 0 2px rgba(226, 226, 226, 0.95);
+}
+
+.image-preview-paper {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 0 1px rgba(0, 0, 0, 0.10);
 }
 
 .font-serif-zh {

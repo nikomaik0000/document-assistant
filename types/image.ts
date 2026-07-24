@@ -18,6 +18,12 @@ export interface ImageCorners {
   bottomRightCorner: Point;
 }
 
+export interface ImageAdjustments {
+  grayscale: boolean;
+  brightness: number;
+  contrast: number;
+}
+
 export interface DocumentImage {
   id: string;
   file: File;
@@ -31,6 +37,7 @@ export interface DocumentImage {
    * 使用者透過「調整裁切範圍」手動校正後也會更新到這裡，供下次開啟編輯畫面時使用。
    */
   corners?: ImageCorners;
+  imageAdjustments?: ImageAdjustments;
   width: number;
   height: number;
   sizeBytes: number;
